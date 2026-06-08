@@ -11,6 +11,7 @@
             cap_A.svg ... cap_Z.svg
         alphabet_animated.svg     # all 52 letters in a grid, sequenced
         alphabet_static.svg       # same grid, no animation
+        preview.html              # interactive viewer (play/pause/speed/scrub/wireframe)
         word_demo.html            # "hello world" composition demo
         metadata.json             # machine-readable index
         report.md                 # human-readable QA report
@@ -26,11 +27,13 @@ import string
 from typing import Optional
 
 from penstroke.templates.trace import trace_glyph
+from penstroke.core.outline import extract_outlines
 from penstroke.render.glyph import make_glyph_svg
-from penstroke.render.alphabet import build_alphabet_svg
+from penstroke.render.alphabet import build_alphabet_svg, make_preview_html
 from penstroke.render.word import make_word_demo_html
 from penstroke.quality.metrics import has_strokes, coverage, stroke_count_matches_template
 from penstroke.quality.report import assess_letter, build_report, build_metadata_json
+from penstroke.quality.glyph_image import write_raw_glyphs
 
 
 _DEFAULT_LETTERS = string.ascii_lowercase + string.ascii_uppercase
@@ -114,6 +117,14 @@ def trace_font(
     if verbose:
         print(f"Processing {font_name}...")
 
+    # 0. Render plain glyph PNGs for downstream vision-model spec extraction
+    #    (see quality/spec.py and the `penstroke spec` CLI). Cheap to do here;
+    #    skipped silently if anything errors.
+    try:
+        write_raw_glyphs(ttf_path, output_dir, letters)
+    except Exception:
+        pass
+
     # 1. Copy the original font + license
     shutil.copy(ttf_path, os.path.join(source_dir, os.path.basename(ttf_path)))
     if license_text:
@@ -161,7 +172,11 @@ def trace_font(
             'stroke_count': len(traced),
             'advance_px': meta['advance_px'],
         }
-        grid_items.append((ch, traced, mask.shape, tmpl, meta))
+        try:
+            outlines = extract_outlines(ttf_path, ch, size=size)
+        except Exception:
+            outlines = []
+        grid_items.append((ch, traced, mask, outlines, tmpl, meta))
 
         if verbose:
             overall, _ = metrics['overall_score']
@@ -176,6 +191,10 @@ def trace_font(
         static_svg, _ = build_alphabet_svg(grid_items, animate=False)
         with open(os.path.join(output_dir, 'alphabet_static.svg'), 'w', encoding='utf-8') as f:
             f.write(static_svg)
+
+        preview_html = make_preview_html(anim_svg, font_name=font_name)
+        with open(os.path.join(output_dir, 'preview.html'), 'w', encoding='utf-8') as f:
+            f.write(preview_html)
 
     # 4. Word composition demo
     demo_html = make_word_demo_html(font_name, glyphs_dir, word=demo_word)
@@ -199,6 +218,14 @@ def trace_font(
             f.write(metadata)
 
     report = build_report(font_name, per_letter_results)
+    # If a spec.json is present, append AI-spec validation to the report.
+    try:
+        from penstroke.quality.spec_validate import build_validation_report
+        validation = build_validation_report(output_dir)
+        if validation:
+            report = report + '\n\n' + validation
+    except Exception:
+        pass
     with open(os.path.join(output_dir, 'report.md'), 'w', encoding='utf-8') as f:
         f.write(report)
 

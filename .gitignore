@@ -42,3 +42,6 @@ ttf_cache/
 # Local notes
 NOTES.md
 TODO.local.md
+
+# Generated trace output
+output/

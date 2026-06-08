@@ -10,10 +10,45 @@ instead (it uses the per-letter advance widths).
 """
 
 import numpy as np
+from skimage import measure
 from penstroke.core.smoothing import taper_profile
 from penstroke.render.svg import (
     stroke_to_ribbon_path, stroke_to_centerline_path, path_length,
 )
+
+
+def _outlines_to_svg_path(outlines):
+    """Build an SVG path string from a list of vector outline polygons.
+
+    Each polygon is an Nx2 array of (x, y) canvas pixel coordinates from
+    `core.outline.extract_outlines`. Uses the even-odd fill rule so
+    counters (hole inside 'o', 'B', etc.) render as background.
+    """
+    parts = []
+    for poly in outlines:
+        if poly is None or len(poly) < 3:
+            continue
+        pts = ' '.join(f'{p[0]:.1f},{p[1]:.1f}' for p in poly)
+        parts.append(f'M{pts}Z')
+    return ''.join(parts)
+
+
+def _mask_to_svg_path(mask):
+    """Fallback: outline from rasterized mask via marching squares.
+
+    Used when no vector outline is available (e.g. extraction failed).
+    Cusps and serifs get rounded off because the mask is antialiased.
+    """
+    if mask.sum() == 0:
+        return ''
+    contours = measure.find_contours(mask.astype(float), 0.5)
+    parts = []
+    for c in contours:
+        if len(c) < 3:
+            continue
+        pts = ' '.join(f'{p[1]:.1f},{p[0]:.1f}' for p in c)
+        parts.append(f'M{pts}Z')
+    return ''.join(parts)
 
 
 _GAP_BETWEEN_STROKES = 0.12
@@ -90,6 +125,7 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
         f'.ribbon {{ fill: {ink_color}; opacity: 0; }}',
         f'.guide  {{ fill: none; stroke: {ink_color}; '
         f'stroke-linecap: round; stroke-linejoin: round; }}',
+        f'.underlay {{ fill: #fde68a; fill-rule: evenodd; opacity: 0.7; }}',
         '.label { font-size: 11px; fill: #888; text-anchor: middle; }',
         '.cell-bg { fill: white; stroke: #eee; stroke-width: 1; rx: 6; }',
         '</style></defs>',
@@ -97,7 +133,8 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
 
     for idx, (item, gstart, (starts, durs)) in enumerate(
             zip(items, glyph_starts, glyph_timelines)):
-        label, traced, (H, W), _picked, _meta = item
+        label, traced, mask, outlines, _picked, _meta = item
+        H, W = mask.shape
         row = idx // cols
         col = idx % cols
         ox = gap + col * cell_w
@@ -124,6 +161,11 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
                    f'y="{oy + glyph_size + 16}">{label_escaped}</text>')
 
         svg.append(f'<g transform="translate({gx:.2f},{gy:.2f}) scale({scale:.4f})">')
+        # Prefer crisp vector outlines from the TTF; fall back to mask
+        # contours if extraction failed (non-Latin scripts mostly).
+        underlay_d = _outlines_to_svg_path(outlines) if outlines else _mask_to_svg_path(mask)
+        if underlay_d:
+            svg.append(f'<path class="underlay" d="{underlay_d}" />')
         for (xs, ys, widths), start, dur in zip(traced, starts, durs):
             ribbon_d = stroke_to_ribbon_path(xs, ys, widths)
             center_d = stroke_to_centerline_path(xs, ys)
@@ -134,7 +176,12 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
                 svg.append(
                     f'<path class="guide" d="{center_d}" '
                     f'stroke-width="{max(1.2, avg_w * 0.8):.2f}" '
-                    f'stroke-dasharray="{L:.2f}" stroke-dashoffset="{L:.2f}">'
+                    f'stroke-dasharray="{L:.2f}" stroke-dashoffset="{L:.2f}" '
+                    f'stroke-opacity="0">'
+                    f'<set attributeName="stroke-opacity" to="0" '
+                    f'begin="loopAnim.begin" />'
+                    f'<set attributeName="stroke-opacity" to="1" '
+                    f'begin="loopAnim.begin+{abs_start:.3f}s" fill="freeze" />'
                     f'<animate attributeName="stroke-dashoffset" '
                     f'from="{L:.2f}" to="0" '
                     f'begin="loopAnim.begin+{abs_start:.3f}s" '
@@ -162,3 +209,19 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
         )
     svg.append('</svg>')
     return "\n".join(svg), total_anim
+
+
+def make_preview_html(animated_svg, font_name=''):
+    """Wrap an animated alphabet SVG in the interactive viewer template.
+
+    The viewer provides play/pause, restart, speed (0.1x-5x), time scrub,
+    and a wireframe toggle that hides ribbons to show only the centerline.
+    """
+    from importlib.resources import files
+    template = files('penstroke.render').joinpath('viewer_template.html').read_text(encoding='utf-8')
+    if font_name:
+        template = template.replace(
+            'Caveat Alphabet — Pen Traced',
+            f'{font_name} Alphabet — Pen Traced',
+        )
+    return template.replace('__SVG_GOES_HERE__', animated_svg)

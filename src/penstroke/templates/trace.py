@@ -198,6 +198,37 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
         row = my0 + fy * mh
         return row, col
 
+    # When the glyph had disconnected components that we captured separately
+    # as dots (the tittle of 'i', dot of 'j', dot of '!', etc.), we need to
+    # detect — and skip — any Hershey template stroke that corresponds to
+    # them. Without this, the template walker coils the dot-template (e.g.
+    # rowmans 'i' encodes the tittle as a 4-segment diamond) into the top of
+    # the stem, producing a wound-up phantom.
+    #
+    # The check is based on vertical position: tittles, accents, j-dots sit
+    # ABOVE or BELOW the main component, never overlapping vertically. So if
+    # we map a Hershey stroke into the full-glyph coordinate system, its
+    # row-range either overlaps main_mask's row-range (= stem/main feature)
+    # or it doesn't (= separated dot feature). Y-overlap is more robust than
+    # pixel-exact main_mask lookup because the full glyph's x-extent often
+    # differs from main_mask's (a wide tittle over a narrow stem).
+    if dot_traces:
+        ys_full, _ = np.where(mask)
+        my0_f, my1_f = ys_full.min(), ys_full.max()
+        mh_f = max(1, my1_f - my0_f)
+        ys_main, _ = np.where(main_mask)
+        main_row_lo, main_row_hi = ys_main.min(), ys_main.max()
+
+        def hershey_stroke_overlaps_main(spts):
+            hys = spts[:, 1]
+            fy_lo = (hys.min() - hy0) / hh
+            fy_hi = (hys.max() - hy0) / hh
+            row_lo = my0_f + fy_lo * mh_f
+            row_hi = my0_f + fy_hi * mh_f
+            return row_hi >= main_row_lo and row_lo <= main_row_hi
+    else:
+        hershey_stroke_overlaps_main = None
+
     # As we trace each stroke we accumulate the pixels it uses. Later strokes
     # then PENALIZE (not forbid) those pixels in their path-finding graph,
     # so they prefer to take a different route through any shared junctions.
@@ -206,6 +237,15 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
 
     for stroke in hershey_strokes:
         spts = np.array(stroke)
+
+        # Skip Hershey template strokes that correspond to a tittle/dot
+        # already captured by the connected-component pass — they'd otherwise
+        # coil into the top of the stem (see comment above on the i/j
+        # rowmans diamond template).
+        if (hershey_stroke_overlaps_main is not None
+                and not hershey_stroke_overlaps_main(spts)):
+            continue
+
         # Arc-length parameterization: cumulative distance along the polyline
         dists = np.cumsum(np.r_[0, np.hypot(np.diff(spts[:, 0]), np.diff(spts[:, 1]))])
         total = dists[-1]
@@ -217,9 +257,14 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
             n_pts = max(n_waypoints * 2, 8)
             sample_dists = np.linspace(0, total, n_pts + 1)[:-1]
         else:
-            # Use at least one waypoint per Hershey polyline vertex, so that
-            # densely-sampled curves (Hershey's 'e', 's', etc.) keep their shape
-            n_pts = max(n_waypoints, len(stroke))
+            # One waypoint per Hershey polyline vertex — trust the template.
+            # Adding extra anchors along straight 2-vertex segments (like the
+            # diagonals of M and the legs of N) lets intermediate waypoints
+            # snap to neighbouring skeleton branches near junctions, which
+            # makes the shortest-path walker zigzag back and forth and
+            # revisit pixels. Densely-sampled curves (Hershey's 'e', 's',
+            # etc.) already carry many vertices, so they keep their shape.
+            n_pts = max(2, len(stroke))
             sample_dists = np.linspace(0, total, n_pts)
 
         # Interpolate Hershey-coordinate waypoints, then map and snap
@@ -274,6 +319,14 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
         result = smooth_and_wobble(s, dist, seed=seed + i)
         if result is not None:
             traced.append(result)
+
+    # Cover any skeleton branches the rigid template walker missed
+    # (serifs, the tail of 'Q', the crossbar of 'f' if the template lacks
+    # it, etc.). See templates/fixes.py for the algorithm.
+    from penstroke.templates.fixes import cover_missing_branches
+    extra = cover_missing_branches(skel, dist, traced, pixel_G, seed=seed)
+    traced.extend(extra)
+
     # Append any dot traces (tittles, dot below 'j', etc.) collected at the
     # connected-component stage at the start of this function.
     traced.extend(dot_traces)

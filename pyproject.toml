@@ -39,5 +39,8 @@ penstroke = "penstroke.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"penstroke.render" = ["viewer_template.html"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
