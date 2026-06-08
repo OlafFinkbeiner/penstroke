@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "penstroke"
+version = "0.1.0"
+description = "Decompose TTF fonts into hand-drawn stroke SVGs"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "penstroke contributors" },
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "scikit-image>=0.20",
+    "Pillow>=9.4",
+    "fonttools>=4.40",
+    "networkx>=3.0",
+    "Hershey-Fonts>=2.1",
+]
+
+[project.optional-dependencies]
+# OCR-based quality validation. Also requires the `tesseract` binary on PATH.
+ocr = [
+    "pytesseract>=0.3.10",
+]
+# Development conveniences.
+dev = [
+    "pytest>=7.0",
+    "cairosvg>=2.7",  # rendering SVG -> PNG for visual checks
+]
+
+[project.scripts]
+penstroke = "penstroke.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

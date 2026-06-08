@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual envs
+.venv/
+venv/
+ENV/
+env/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Pipeline outputs — these can grow large and are reproducible from source
+output/
+out/
+/tmp/
+
+# Downloaded fonts — store these outside the repo or use ttf_cache/
+ttf_cache/
+*.ttf
+!tests/fixtures/*.ttf
+
+# Local notes
+NOTES.md
+TODO.local.md
