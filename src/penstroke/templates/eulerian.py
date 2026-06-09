@@ -79,6 +79,49 @@ Y_BAND_PX = 60
 # Step 1: annotated multigraph
 # ---------------------------------------------------------------------------
 
+def _path_arc_length(path):
+    arr = np.asarray(path, dtype=float)
+    if len(arr) < 2:
+        return 0.0
+    diffs = np.diff(arr, axis=0)
+    return float(np.hypot(diffs[:, 0], diffs[:, 1]).sum())
+
+
+def _reorder_scrambled_path(path, u):
+    """Repair a pixel path whose ordering is scrambled.
+
+    A proper 8-connected pixel chain has each consecutive step ≤ √2, so
+    arc_length ≈ (n-1) × ~1.2. A scrambled path (same pixels, wrong
+    order) has jumps, inflating arc length. We detect via arc_length /
+    (n-1) > 1.6 and repair with a nearest-neighbour walk from the
+    endpoint nearest `u`.
+
+    Nearest-neighbour reordering is exact for true chains and a decent
+    approximation otherwise — and since the pixels DO form a chain (they
+    came from a skeleton), it reconstructs the correct order.
+    """
+    n = len(path)
+    if n < 3:
+        return list(path)
+    arc = _path_arc_length(path)
+    if arc / max(n - 1, 1) <= 1.6:
+        return list(path)   # ordering is fine
+    pts = [tuple(p) for p in path]
+    # Start from whichever endpoint pixel is closest to u.
+    start = min(pts, key=lambda p: (p[0] - u[0]) ** 2 + (p[1] - u[1]) ** 2)
+    remaining = set(pts)
+    remaining.discard(start)
+    ordered = [start]
+    cur = start
+    while remaining:
+        nxt = min(remaining,
+                  key=lambda p: (p[0] - cur[0]) ** 2 + (p[1] - cur[1]) ** 2)
+        ordered.append(nxt)
+        remaining.discard(nxt)
+        cur = nxt
+    return ordered
+
+
 def build_annotated_graph(skel, dist_map):
     """Build the cleaned skeleton multigraph with arc-length + tangent edge
     annotations.
@@ -90,18 +133,44 @@ def build_annotated_graph(skel, dist_map):
         each pointing AWAY from its endpoint (into the edge)
       - d['retrace']: False initially; set True by T-join repair if this
         edge was duplicated to fix parity
+
+    Hygiene applied before annotation (both target real defects observed
+    from skeleton_to_graph + merge_nearby_junctions output):
+      1. Scrambled-path repair: an edge whose pixel ordering is jumbled
+         (arc length far exceeding what an 8-connected chain allows)
+         is re-ordered via nearest-neighbour walk. Without this the
+         resampled path cuts across white space.
+      2. Duplicate-edge removal: parallel edges between the same node
+         pair whose PIXEL SETS are identical are collapsed to one.
+         skeleton_to_graph emits some edges twice; the duplicates
+         corrupt degree parity (every node looks even) and make the
+         Eulerian tracer retrace every line.
     """
     G = skeleton_to_graph(skel)
     G = merge_nearby_junctions(G, max_dist=22)
+
+    # --- Hygiene pass 1: repair scrambled paths ----------------------
+    for u, v, k, d in list(G.edges(keys=True, data=True)):
+        d['path'] = _reorder_scrambled_path(d['path'], u)
+
+    # --- Hygiene pass 2: drop identical-pixel-set duplicates ---------
+    seen_sets = {}
+    to_drop = []
+    for u, v, k, d in G.edges(keys=True, data=True):
+        node_key = frozenset((tuple(u), tuple(v)))
+        pix_key = frozenset(map(tuple, d['path']))
+        sig = (node_key, pix_key)
+        if sig in seen_sets:
+            to_drop.append((u, v, k))
+        else:
+            seen_sets[sig] = (u, v, k)
+    for (u, v, k) in to_drop:
+        G.remove_edge(u, v, key=k)
+
     G = collapse_parallel_edges(G, dist_map)
     for u, v, k, d in list(G.edges(keys=True, data=True)):
         path = d['path']
-        arr = np.asarray(path, dtype=float)
-        if len(arr) >= 2:
-            diffs = np.diff(arr, axis=0)
-            d['length'] = float(np.hypot(diffs[:, 0], diffs[:, 1]).sum())
-        else:
-            d['length'] = 0.0
+        d['length'] = _path_arc_length(path)
         d['tan_u'] = tangent_at(path, u, k=20)
         d['tan_v'] = tangent_at(path, v, k=20)
         d['retrace'] = False

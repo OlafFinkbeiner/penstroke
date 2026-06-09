@@ -292,7 +292,7 @@ def collapse_parallel_edges(G, dist_map=None):
             continue
 
         # Greedy grouping: for each path, check it against later paths in the
-        # list and merge any that pass both tests.
+        # list and merge any that pass ALL THREE tests.
         used = set()
         out_paths = []
         for i in range(len(resampled)):
@@ -302,6 +302,18 @@ def collapse_parallel_edges(G, dist_map=None):
             for j in range(i + 1, len(resampled)):
                 if j in used:
                     continue
+                # Length-ratio test: a TRUE medial split produces two
+                # near-equal-length paths (the two sides of one thick
+                # stroke). Two paths of very different lengths between
+                # the same nodes are REAL topology — e.g. the short
+                # chord and long arc of a hook loop in a cursive 't'.
+                # Averaging those produces a garbage line through the
+                # middle of the enclosed region (the "diamond" artefact).
+                len_ratio = (max(path_lens[i], path_lens[j])
+                             / max(min(path_lens[i], path_lens[j]), 1.0))
+                if len_ratio > 1.4:
+                    continue
+
                 sep = np.mean(np.hypot(
                     resampled[i][:, 0] - resampled[j][:, 0],
                     resampled[i][:, 1] - resampled[j][:, 1]))
