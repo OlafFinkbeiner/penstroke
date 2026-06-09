@@ -4,13 +4,24 @@ The Hershey template walker is rigid — it only visits skeleton pixels along
 its template strokes. Anything off the template (serif spurs, the tail of
 'Q', a 'f' crossbar that the template doesn't include) is left untraced.
 
-This module sweeps the skeleton AFTER the main trace, finds connected
-components of pixels not covered by any existing stroke, and emits a
-stroke for each. The added strokes are deliberately small/local — they
-catch features, not redraw the letter.
+Two repair stages:
+
+  1. extend_strokes_into_spurs (called BEFORE smoothing)
+       For each raw skeleton-pixel stroke, BFS from each endpoint into
+       any adjacent uncovered skeleton pixels. The walked spur is
+       PREPENDED or APPENDED to the stroke, so a stem grows into its
+       foot-serif as one continuous pen motion. This is what "draw two
+       in one stroke" means: no extra pen lift, the serif is part of
+       the same stroke.
+
+  2. cover_missing_branches (called AFTER smoothing, as a fallback)
+       Whatever uncovered fragments remain — typically things not
+       adjacent to any stroke endpoint, like a crossbar that floats
+       between two stems — get walked as their own new strokes.
 
 Coverage is measured pixel-wise: a skeleton pixel is "covered" if it
-lies within `tolerance_px` of some traced-stroke centerline sample.
+lies within `tolerance_px` of some traced-stroke centerline sample
+(stage 2) or in the visited-pixel set (stage 1).
 """
 
 import numpy as np
@@ -45,6 +56,139 @@ def _build_centerline_mask(traced, shape, tolerance_px=3.0):
             dc1 = dc0 + (c1 - c0)
             mask[r0:r1, c0:c1] |= disc[dr0:dr1, dc0:dc1]
     return mask
+
+
+def extend_strokes_into_spurs(strokes_pixels, pixel_G,
+                              max_extension=80, min_extension=3):
+    """Extend each stroke's pixel path into adjacent uncovered skeleton spurs.
+
+    Mutates `strokes_pixels` in place. For each stroke:
+      - Look at its two endpoint pixels.
+      - From each endpoint, walk into uncovered skeleton through the
+        pixel graph: follow a chain of degree-≤2 nodes until we hit a
+        junction, an endpoint of the skeleton, an already-covered pixel,
+        or a length cap.
+      - The walked chain is prepended (at start) or appended (at end).
+
+    Two adjacent strokes can each try to extend into the same spur; the
+    first one wins because covered-pixel tracking is updated as we go.
+
+    Args:
+        strokes_pixels: list[list[(r,c)]] — raw skeleton paths from the
+            template walker (before smoothing).
+        pixel_G: networkx graph of skeleton pixels.
+        max_extension: hard cap on extension length, in pixels. Stops
+            runaway extensions through long branches we shouldn't claim
+            (e.g. the bowl of a 'b' shouldn't get sucked into the stem
+            stroke's extension).
+        min_extension: don't bother appending extensions shorter than
+            this many pixels; not worth the noise.
+
+    Returns:
+        the modified strokes_pixels (same list, mutated).
+    """
+    covered = set()
+    for s in strokes_pixels:
+        covered.update(s)
+
+    for s in strokes_pixels:
+        if len(s) < 2:
+            continue
+        # Try to extend from the start
+        ext_start = _walk_uncovered_chain(s[0], s[1], pixel_G, covered, max_extension)
+        if len(ext_start) >= min_extension:
+            # ext_start is ordered from inside-out (s[0] is at the
+            # "anchor" end). We want to prepend in the outside-to-inside
+            # direction so the new stroke reads as continuous.
+            new_prefix = list(reversed(ext_start))
+            # ext_start[0] is the first new pixel; the last in reversed
+            # equals s[0] only if we included it. We didn't, so just
+            # concatenate.
+            s[:0] = new_prefix
+            covered.update(new_prefix)
+
+        # Re-fetch end (s changed after prefix insertion)
+        end = s[-1]
+        prev_end = s[-2] if len(s) >= 2 else None
+        ext_end = _walk_uncovered_chain(end, prev_end, pixel_G, covered, max_extension)
+        if len(ext_end) >= min_extension:
+            s.extend(ext_end)
+            covered.update(ext_end)
+    return strokes_pixels
+
+
+def _walk_uncovered_chain(start, incoming_neighbor, pixel_G, covered, max_len):
+    """Walk away from `start` along uncovered skeleton pixels.
+
+    Used to extend a stroke past its current endpoint into an attached
+    spur (serif, tail, etc.). The chain continues only along uncovered
+    skeleton pixels.
+
+    When the walk hits a junction (multiple uncovered branches diverging),
+    we pick the LONGEST branch to continue along — that's typically the
+    visually-dominant continuation (e.g. the longer half of a slab serif).
+    Other branches remain for the second-stage `cover_missing_branches`
+    to pick up as separate strokes if substantial enough.
+
+    `incoming_neighbor` is the next-to-last pixel of the existing
+    stroke — we won't immediately backtrack into it.
+
+    Returns the chain WITHOUT `start` (which is already in the stroke),
+    ordered from `start`-adjacent outward.
+    """
+    if start not in pixel_G:
+        return []
+    chain = []
+    cur = start
+    prev = incoming_neighbor
+    while len(chain) < max_len:
+        nbrs = [n for n in pixel_G.neighbors(cur)
+                if n != prev and n not in covered and n not in chain]
+        if not nbrs:
+            break
+        if len(nbrs) == 1:
+            nxt = nbrs[0]
+        else:
+            # Junction: pick the branch with the longest uncovered run.
+            best_n, best_len = None, -1
+            for cand in nbrs:
+                run = _measure_uncovered_run(cand, cur, pixel_G,
+                                             covered | set(chain),
+                                             cap=max_len - len(chain))
+                if run > best_len:
+                    best_len = run
+                    best_n = cand
+            if best_n is None or best_len < 3:
+                # Junction with only stubby branches — not worth following
+                break
+            nxt = best_n
+        chain.append(nxt)
+        prev = cur
+        cur = nxt
+    return chain
+
+
+def _measure_uncovered_run(start, prev, pixel_G, covered, cap=40):
+    """Length of the longest uncovered chain reachable from `start`.
+
+    Simple linear walk: follow degree-≤2 nodes until a junction or dead
+    end. Approximates branch length without full graph search.
+    """
+    if start in covered or start not in pixel_G:
+        return 0
+    length = 1
+    cur, p = start, prev
+    visited = {start}
+    while length < cap:
+        nbrs = [n for n in pixel_G.neighbors(cur)
+                if n != p and n not in covered and n not in visited]
+        if len(nbrs) != 1:
+            break
+        nxt = nbrs[0]
+        visited.add(nxt)
+        length += 1
+        p, cur = cur, nxt
+    return length
 
 
 def cover_missing_branches(skel, dist, traced, pixel_G,

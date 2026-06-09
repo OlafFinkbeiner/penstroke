@@ -314,16 +314,25 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
             strokes_pixels.append(full_path)
             used_pixels.update(full_path)
 
+    # First repair stage: extend each stroke into any adjacent uncovered
+    # skeleton spurs. This converts a stem with a floating bottom serif
+    # into a stem that flicks out into the serif as one continuous pen
+    # motion — the natural "draw two in one stroke" decomposition.
+    from penstroke.templates.fixes import (
+        extend_strokes_into_spurs, cover_missing_branches,
+    )
+    extend_strokes_into_spurs(strokes_pixels, pixel_G)
+
     traced = []
     for i, s in enumerate(strokes_pixels):
         result = smooth_and_wobble(s, dist, seed=seed + i)
         if result is not None:
             traced.append(result)
 
-    # Cover any skeleton branches the rigid template walker missed
-    # (serifs, the tail of 'Q', the crossbar of 'f' if the template lacks
-    # it, etc.). See templates/fixes.py for the algorithm.
-    from penstroke.templates.fixes import cover_missing_branches
+    # Second repair stage: anything still uncovered (typically features
+    # not adjacent to any stroke endpoint, e.g. a free-floating crossbar)
+    # gets walked as a new stroke. Self-filtered against the cascade's
+    # phantom/zigzag heuristics so the fix never makes things worse.
     extra = cover_missing_branches(skel, dist, traced, pixel_G, seed=seed)
     traced.extend(extra)
 
