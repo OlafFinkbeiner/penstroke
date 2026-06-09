@@ -25,13 +25,32 @@ def skeletonize(mask):
     Returns (skel, dist). Lightly smooths the boundary before computing the
     medial axis — without this, corner aliasing creates dozens of spurious
     spur branches that look like real strokes to downstream code.
+
+    Deterministic: skimage's ``medial_axis`` uses random tie-breaking
+    when multiple pixels are equidistant from the boundary, which means
+    two runs on the SAME mask can return DIFFERENT skeletons (and thus
+    different graph topologies, and thus different stroke counts in the
+    Eulerian tracer). We pass a fixed random_state so the same input
+    always yields the same skeleton.
     """
     # Gaussian + threshold smooths sharp corner artifacts. sigma=1.5 is the
     # smallest value that kills the worst spurs without rounding off real
     # geometry (verified empirically on DejaVu/Caveat at 512px).
     smoothed = gaussian_filter(mask.astype(float), sigma=1.5)
     mask_clean = (smoothed > 0.5).astype(np.uint8)
-    skel, dist = medial_axis(mask_clean, return_distance=True)
+    try:
+        skel, dist = medial_axis(mask_clean, return_distance=True,
+                                 rng=0)
+    except TypeError:
+        try:
+            skel, dist = medial_axis(mask_clean, return_distance=True,
+                                     random_state=0)
+        except TypeError:
+            # Older skimage without rng/random_state — fall back to a
+            # seeded global numpy RNG so behaviour is at least
+            # reproducible within one process.
+            np.random.seed(0)
+            skel, dist = medial_axis(mask_clean, return_distance=True)
     skel = prune_skeleton(skel, dist)
     # Recompute distance transform from the cleaned mask (not the skeleton-
     # derived one), so it reflects true stroke half-widths everywhere.

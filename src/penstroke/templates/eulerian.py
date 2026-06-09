@@ -494,17 +494,25 @@ def order_all_walks(walks_with_bbox_len):
 # Step 9: top-level entry point
 # ---------------------------------------------------------------------------
 
-def _split_mask_dots(mask, skel, min_dot_area=30, max_dot_skel=8):
+def _split_mask_dots(mask, skel, min_dot_area=30, max_dot_skel=8,
+                     min_roundness=0.55):
     """Separate a glyph mask into 'main' pixels and 'dot' connected
     components (tittles, accents, punctuation dots).
 
+    A connected component is treated as a dot only if ALL of:
+      - skeleton has fewer than `max_dot_skel` pixels (degenerate)
+      - mask has at least `min_dot_area` pixels (not skeleton noise)
+      - the component is roughly ROUND, not a sliver (roundness ≥
+        `min_roundness`). Roundness = area / (π × (max_radius)²),
+        where max_radius = max distance from centroid to any pixel.
+        Real tittles are near-circular (roundness ≈ 0.6-0.95). A
+        narrow connector/sliver that got disconnected from the main
+        component has low roundness (< 0.3) and should NOT be
+        emitted as a dot — it gets pushed into main_mask instead so
+        the graph builder sees it.
+
     Returns (main_mask, dot_taps) where dot_taps is a list of
     (xs, ys, widths) tap-strokes ready to append at the end.
-
-    A connected component is treated as a dot if its skeleton has fewer
-    than `max_dot_skel` pixels AND its mask has at least `min_dot_area`
-    pixels. The dot is rendered as a tiny 4-point arc at the centroid
-    with width = ink-blob diameter.
     """
     from scipy.ndimage import label, center_of_mass
     structure = np.ones((3, 3), dtype=int)
@@ -516,16 +524,25 @@ def _split_mask_dots(mask, skel, min_dot_area=30, max_dot_skel=8):
         cc_skel = skel & cc_mask
         n_skel = int(cc_skel.sum())
         n_mask = int(cc_mask.sum())
-        if n_skel < max_dot_skel and n_mask >= min_dot_area:
-            cy, cx = center_of_mass(cc_mask)
-            radius = (n_mask / np.pi) ** 0.5
-            r = 1.0
-            xs = np.array([cx - r, cx, cx + r, cx])
-            ys = np.array([cy, cy - r, cy, cy + r])
-            widths = np.array([radius * 2.0] * 4)
-            dot_taps.append((xs, ys, widths))
-        else:
-            main_mask |= cc_mask.astype(mask.dtype)
+        is_dot_candidate = (n_skel < max_dot_skel and n_mask >= min_dot_area)
+        if is_dot_candidate:
+            # Roundness check: compare mask area against the disc that
+            # would just contain it.
+            ys, xs = np.where(cc_mask)
+            cy, cx = float(ys.mean()), float(xs.mean())
+            max_r = float(np.hypot(ys - cy, xs - cx).max())
+            disc_area = math.pi * max_r * max_r
+            roundness = n_mask / disc_area if disc_area > 0 else 0.0
+            if roundness >= min_roundness:
+                cy2, cx2 = center_of_mass(cc_mask)
+                radius = (n_mask / math.pi) ** 0.5
+                r = 1.0
+                xs_pt = np.array([cx2 - r, cx2, cx2 + r, cx2])
+                ys_pt = np.array([cy2, cy2 - r, cy2, cy2 + r])
+                widths = np.array([radius * 2.0] * 4)
+                dot_taps.append((xs_pt, ys_pt, widths))
+                continue
+        main_mask |= cc_mask.astype(mask.dtype)
     return main_mask, dot_taps
 
 
