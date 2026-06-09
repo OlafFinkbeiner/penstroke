@@ -314,12 +314,14 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
             strokes_pixels.append(full_path)
             used_pixels.update(full_path)
 
-    # First repair stage: extend each stroke into any adjacent uncovered
-    # skeleton spurs. This converts a stem with a floating bottom serif
-    # into a stem that flicks out into the serif as one continuous pen
-    # motion — the natural "draw two in one stroke" decomposition.
+    # Stage 1 (before smoothing): extend each stroke into any adjacent
+    # uncovered skeleton spurs. Converts a stem with a floating bottom
+    # serif into a stem that flicks out into the serif as one continuous
+    # pen motion — the natural "draw two in one" decomposition.
     from penstroke.templates.fixes import (
         extend_strokes_into_spurs, cover_missing_branches,
+        merge_endpoint_adjacent_strokes, split_topmost_interior_strokes,
+        deduplicate_overlapping_strokes, normalize_stroke_directions,
     )
     extend_strokes_into_spurs(strokes_pixels, pixel_G)
 
@@ -329,12 +331,33 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
         if result is not None:
             traced.append(result)
 
-    # Second repair stage: anything still uncovered (typically features
-    # not adjacent to any stroke endpoint, e.g. a free-floating crossbar)
-    # gets walked as a new stroke. Self-filtered against the cascade's
-    # phantom/zigzag heuristics so the fix never makes things worse.
+    # Stage 2: cover features still missing — typically things not
+    # adjacent to any stroke endpoint, e.g. a free-floating crossbar.
+    # Self-filtered against phantom/zigzag heuristics.
     extra = cover_missing_branches(skel, dist, traced, pixel_G, seed=seed)
     traced.extend(extra)
+
+    # Stage 3: merge endpoint-adjacent strokes whose tangents align.
+    # Caveat 'f': the top hook and stem share an endpoint going the same
+    # direction → merge. Caveat 'u': bowl exit and exit-flick share an
+    # endpoint at a sharp angle → don't merge. Also rejects merges that
+    # would produce topmost-interior paths.
+    merge_endpoint_adjacent_strokes(traced)
+
+    # Stage 4: split any stroke whose topmost point sits in its interior
+    # (a bottom→top→bottom path no human would draw without a lift).
+    # Splits at the topmost so both halves start at the top.
+    traced = split_topmost_interior_strokes(traced)
+
+    # Stage 5: drop strokes whose path is mutually covered by another
+    # stroke. Catches the duplicate-stem case where the template walker
+    # retraces and the split/cover stages leak two records for the same
+    # line. Requires MUTUAL overlap so distinct shorter features (a
+    # crossbar protruding from a stem) are preserved.
+    traced = deduplicate_overlapping_strokes(traced)
+
+    # Stage 6: enforce top-down by flipping strokes drawn bottom-up.
+    traced = normalize_stroke_directions(traced)
 
     # Append any dot traces (tittles, dot below 'j', etc.) collected at the
     # connected-component stage at the start of this function.

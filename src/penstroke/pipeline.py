@@ -134,6 +134,7 @@ def trace_font(
     # 2. Trace each letter, write its individual SVG, run QA metrics
     per_letter_results = {}
     grid_items = []   # for the alphabet SVG
+    traced_per_letter = {}   # for the diagnostic renderer
     canvas_dims = None
     baseline_y = None
     upem = None
@@ -177,6 +178,7 @@ def trace_font(
         except Exception:
             outlines = []
         grid_items.append((ch, traced, mask, outlines, tmpl, meta))
+        traced_per_letter[ch] = (mask, traced)
 
         if verbose:
             overall, _ = metrics['overall_score']
@@ -195,6 +197,14 @@ def trace_font(
         preview_html = make_preview_html(anim_svg, font_name=font_name)
         with open(os.path.join(output_dir, 'preview.html'), 'w', encoding='utf-8') as f:
             f.write(preview_html)
+
+    # 3b. Per-letter diagnostic PNGs (colored strokes, numbered starts)
+    try:
+        from penstroke.render.diagnostic import render_all_diagnostics
+        render_all_diagnostics(ttf_path, traced_per_letter, output_dir,
+                               letters, size=size)
+    except Exception:
+        pass
 
     # 4. Word composition demo
     demo_html = make_word_demo_html(font_name, glyphs_dir, word=demo_word)
