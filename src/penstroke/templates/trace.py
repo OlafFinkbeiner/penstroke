@@ -322,6 +322,7 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
         extend_strokes_into_spurs, cover_missing_branches,
         merge_endpoint_adjacent_strokes, split_topmost_interior_strokes,
         deduplicate_overlapping_strokes, normalize_stroke_directions,
+        order_strokes_main_first,
     )
     extend_strokes_into_spurs(strokes_pixels, pixel_G)
 
@@ -359,7 +360,14 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
     # Stage 6: enforce top-down by flipping strokes drawn bottom-up.
     traced = normalize_stroke_directions(traced)
 
+    # Stage 7: order strokes so the main/dominant one comes first
+    # (longest by path length, leftmost-x tiebreak). Makes animations
+    # play in a natural drawing order — main stem, then crossbars,
+    # then accessories.
+    traced = order_strokes_main_first(traced)
+
     # Append any dot traces (tittles, dot below 'j', etc.) collected at the
-    # connected-component stage at the start of this function.
+    # connected-component stage at the start of this function. Dots are
+    # always drawn LAST, after the main letterform.
     traced.extend(dot_traces)
     return mask, skel, dist, traced, tmpl_font, meta

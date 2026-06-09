@@ -432,6 +432,39 @@ def deduplicate_overlapping_strokes(traced,
     return [s for k, s in enumerate(traced) if k not in dropped]
 
 
+def order_strokes_main_first(traced):
+    """Reorder strokes so the main/dominant stroke comes first.
+
+    Natural handwriting order: the main stem(s) get drawn first, then
+    accessories (crossbars, arms, tails, descenders), with dots last.
+    Without ordering, our trace produces strokes in whatever order the
+    template walker and fix stages happened to emit — leading to
+    animations where 'k' draws its arms before the stem or 'g' draws
+    its descender before the bowl.
+
+    Heuristic:
+      1. Primary key: stroke physical length, descending. The main
+         stem of a letter is almost always the longest stroke; the
+         crossbar, arm, descender hook is shorter.
+      2. Tiebreaker: start_x ascending. For strokes of similar length
+         (e.g. the two diagonals of A or V), draw the leftmost first
+         — the natural left-to-right writing direction.
+
+    Dots are NOT reordered with this rule; they're appended separately
+    after this function runs (see templates/trace.py).
+    """
+    if len(traced) < 2:
+        return traced
+    decorated = []
+    for s in traced:
+        xs, ys, ws = s
+        plen = float(np.sqrt(np.diff(xs)**2 + np.diff(ys)**2).sum())
+        decorated.append((s, plen, float(xs[0])))
+    # Sort by (-length, start_x): longest first, leftmost first as tiebreak.
+    decorated.sort(key=lambda kv: (-kv[1], kv[2]))
+    return [d[0] for d in decorated]
+
+
 def normalize_stroke_directions(traced):
     """Apply the top-down writing convention to each stroke.
 
