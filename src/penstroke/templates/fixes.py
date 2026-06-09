@@ -432,37 +432,51 @@ def deduplicate_overlapping_strokes(traced,
     return [s for k, s in enumerate(traced) if k not in dropped]
 
 
-def order_strokes_main_first(traced):
-    """Reorder strokes so the main/dominant stroke comes first.
+def order_strokes_main_first(traced, main_height_fraction=0.55):
+    """Reorder strokes so main strokes come first (left-to-right), then
+    accessories (top-to-bottom).
 
-    Natural handwriting order: the main stem(s) get drawn first, then
-    accessories (crossbars, arms, tails, descenders), with dots last.
-    Without ordering, our trace produces strokes in whatever order the
-    template walker and fix stages happened to emit — leading to
-    animations where 'k' draws its arms before the stem or 'g' draws
-    its descender before the bowl.
+    Natural handwriting/typographic order:
+      1. Main strokes — those that span most of the letter's vertical
+         extent (stems, diagonals of A/M/V/W) — drawn first,
+         left-to-right across the letter.
+      2. Accessory strokes — crossbars, arms, serif feet — drawn next,
+         from top to bottom (so the crossbar of E precedes its
+         lower-horizontal bar).
+      3. Dots are appended outside this function (always last).
 
-    Heuristic:
-      1. Primary key: stroke physical length, descending. The main
-         stem of a letter is almost always the longest stroke; the
-         crossbar, arm, descender hook is shorter.
-      2. Tiebreaker: start_x ascending. For strokes of similar length
-         (e.g. the two diagonals of A or V), draw the leftmost first
-         — the natural left-to-right writing direction.
+    Classification: a stroke is "main" if its vertical extent is at
+    least `main_height_fraction` of the tallest stroke's extent.
 
-    Dots are NOT reordered with this rule; they're appended separately
-    after this function runs (see templates/trace.py).
+    This replaces an earlier "longest first" rule that broke on letters
+    like M (where both verticals are slightly longer than the
+    diagonals, so the natural left-V → left-diag → right-diag → right-V
+    sequence got reshuffled into left-V → right-V → diagonals) and on
+    Caveat h (where the connector bump is slightly longer than the
+    stem, so the bump animated before the stem).
     """
     if len(traced) < 2:
         return traced
-    decorated = []
-    for s in traced:
-        xs, ys, ws = s
-        plen = float(np.sqrt(np.diff(xs)**2 + np.diff(ys)**2).sum())
-        decorated.append((s, plen, float(xs[0])))
-    # Sort by (-length, start_x): longest first, leftmost first as tiebreak.
-    decorated.sort(key=lambda kv: (-kv[1], kv[2]))
-    return [d[0] for d in decorated]
+    # Find the tallest stroke's vertical extent — our reference for "main".
+    heights = [float(s[1].max() - s[1].min()) for s in traced]
+    max_h = max(heights) if heights else 0.0
+    if max_h <= 0:
+        return traced
+    threshold = max_h * main_height_fraction
+
+    mains = []      # (stroke, leftmost_x)
+    accessories = []  # (stroke, topmost_y)
+    for s, h in zip(traced, heights):
+        xs, ys, _ = s
+        if h >= threshold:
+            mains.append((s, float(xs.min())))
+        else:
+            accessories.append((s, float(ys.min())))
+    # Mains: left-to-right by leftmost-x.
+    mains.sort(key=lambda kv: kv[1])
+    # Accessories: top-to-bottom by topmost-y (small y = top).
+    accessories.sort(key=lambda kv: kv[1])
+    return [s for s, _ in mains] + [s for s, _ in accessories]
 
 
 def normalize_stroke_directions(traced):

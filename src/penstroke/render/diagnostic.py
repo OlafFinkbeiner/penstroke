@@ -7,11 +7,16 @@ Designed for visual self-QA — both human and vision-model. Each PNG shows:
     (red → orange → yellow → green → blue → indigo → violet, repeating).
   - A numbered circle at the START of each stroke (so you can see order).
   - A small arrow at the END of each stroke (so you can see direction).
+  - A strip of per-stroke mini-panels (one stroke per panel) below the
+    main view so order and shape are unambiguous when strokes overlap.
+  - A FLIPBOOK strip below that showing the strokes drawn cumulatively
+    at five time-points — answers "does this look like writing in
+    motion?", which is the real test of whether the trace is right.
 
 Loaded with `Read`, these images let me judge stroke decomposition
 correctness directly: is the stroke order natural? are the directions
 top-down? did any feature get missed? are there phantom strokes
-inside a single pen-width?
+inside a single pen-width? Does it animate like a person writing?
 """
 
 import os
@@ -102,7 +107,10 @@ def render_letter_diagnostic(char, mask, traced, outlines, out_path,
     cols = max(1, (canvas_size - panel_pad) // (panel_size + panel_pad))
     strip_rows = (n + cols - 1) // cols if n > 0 else 0
     strip_h = strip_rows * (panel_size + panel_pad) + panel_pad + 24 if n else 0
-    total_h = canvas_size + strip_h
+    # Flipbook strip: 5 frames in one row. Same panel size as per-stroke.
+    flipbook_frames = [0.2, 0.4, 0.6, 0.8, 1.0] if n > 0 else []
+    flipbook_h = (panel_size + panel_pad + 24) if flipbook_frames else 0
+    total_h = canvas_size + strip_h + flipbook_h
 
     img = Image.new('RGB', (canvas_size, total_h), (250, 250, 248))
     draw = ImageDraw.Draw(img, 'RGBA')
@@ -245,6 +253,51 @@ def render_letter_diagnostic(char, mask, traced, outlines, out_path,
             except (OSError, IOError):
                 nfont = ImageFont.load_default()
             draw.text((px + 4, py + 2), f'{i + 1}',
+                      fill=(100, 100, 100), font=nfont)
+
+    # 5. Flipbook strip — cumulative animation at 5 time-points.
+    # Lets us answer the real correctness question: "when this plays,
+    # does it look like a person drawing?".
+    if flipbook_frames:
+        flip_y0 = canvas_size + strip_h + panel_pad
+        draw.text((panel_pad, flip_y0), 'flipbook (animation frames):',
+                  fill=(120, 120, 120), font=hdr_font)
+        flip_y0 += 20
+        # Treat each stroke as taking equal time (1/n of total).
+        for fi, t in enumerate(flipbook_frames):
+            px = panel_pad + fi * (panel_size + panel_pad)
+            py = flip_y0
+            draw.rectangle([px, py, px + panel_size, py + panel_size],
+                           fill=(255, 255, 255),
+                           outline=(220, 220, 220), width=1)
+            # Faint outline of glyph for context
+            for poly in outlines:
+                if len(poly) < 3:
+                    continue
+                pts = [(float(x) * mini_scale + px + m_ox_offset,
+                        float(y) * mini_scale + py + m_oy_offset)
+                       for x, y in poly]
+                draw.polygon(pts, fill=(253, 230, 138, 80))
+            # Draw the cumulative stroke state at time t.
+            # Stroke k is fully drawn by time (k+1)/n; partial in (k/n, (k+1)/n).
+            for sk, (xs, ys, widths) in enumerate(traced):
+                color = _stroke_color(sk)
+                sk_start = sk / n
+                sk_end = (sk + 1) / n
+                if t <= sk_start:
+                    continue
+                if t >= sk_end:
+                    progress = 1.0
+                else:
+                    progress = (t - sk_start) / (sk_end - sk_start)
+                cut = max(1, int(round(progress * len(xs))))
+                pts = [(float(x) * mini_scale + px + m_ox_offset,
+                        float(y) * mini_scale + py + m_oy_offset)
+                       for x, y in zip(xs[:cut], ys[:cut])]
+                for a, b in zip(pts[:-1], pts[1:]):
+                    draw.line([a, b], fill=color, width=2)
+            # Time label top-left.
+            draw.text((px + 4, py + 2), f'{int(t * 100)}%',
                       fill=(100, 100, 100), font=nfont)
 
     img.save(out_path)

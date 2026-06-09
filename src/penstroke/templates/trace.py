@@ -92,7 +92,8 @@ def _trace_dots(mask, seed=0):
     return traced
 
 
-def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
+def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5,
+                regime='print'):
     """Trace one glyph using a topology-matched Hershey template.
 
     Args:
@@ -339,23 +340,24 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
     traced.extend(extra)
 
     # Stage 3: merge endpoint-adjacent strokes whose tangents align.
-    # Caveat 'f': the top hook and stem share an endpoint going the same
-    # direction → merge. Caveat 'u': bowl exit and exit-flick share an
-    # endpoint at a sharp angle → don't merge. Also rejects merges that
-    # would produce topmost-interior paths.
+    # Applies in both regimes — joining a continuous curve that the
+    # template walker emitted as two records is always right.
     merge_endpoint_adjacent_strokes(traced)
 
-    # Stage 4: split any stroke whose topmost point sits in its interior
-    # (a bottom→top→bottom path no human would draw without a lift).
-    # Splits at the topmost so both halves start at the top.
+    # Stage 4 — split — applies to BOTH regimes. It's selective: it only
+    # fires on true N-shape paths (topmost interior AND the path returns
+    # close to its start), which catches Caveat 'b' (bottom-up stem +
+    # bowl tour) but does NOT fire on Caveat 'm' (multi-hump wave moves
+    # rightward, no return to start). So split helps script too.
     traced = split_topmost_interior_strokes(traced)
 
-    # Stage 5: drop strokes whose path is mutually covered by another
-    # stroke. Catches the duplicate-stem case where the template walker
-    # retraces and the split/cover stages leak two records for the same
-    # line. Requires MUTUAL overlap so distinct shorter features (a
-    # crossbar protruding from a stem) are preserved.
-    traced = deduplicate_overlapping_strokes(traced)
+    # Stage 5 — dedup — is PRINT-regime only. Script fonts legitimately
+    # retrace because lifting the pen costs more than going over a line
+    # again; dropping the "duplicate" record loses a real motion. Print
+    # fonts have no biomechanical excuse for overlap — duplicate strokes
+    # there are just pipeline leakage.
+    if regime == 'print':
+        traced = deduplicate_overlapping_strokes(traced)
 
     # Stage 6: enforce top-down by flipping strokes drawn bottom-up.
     traced = normalize_stroke_directions(traced)
@@ -363,7 +365,7 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
     # Stage 7: order strokes so the main/dominant one comes first
     # (longest by path length, leftmost-x tiebreak). Makes animations
     # play in a natural drawing order — main stem, then crossbars,
-    # then accessories.
+    # then accessories. Applies in both regimes.
     traced = order_strokes_main_first(traced)
 
     # Append any dot traces (tittles, dot below 'j', etc.) collected at the
