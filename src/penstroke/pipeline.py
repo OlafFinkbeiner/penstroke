@@ -27,6 +27,7 @@ import string
 from typing import Optional
 
 from penstroke.templates.trace import trace_glyph
+from penstroke.templates.eulerian import trace_glyph_eulerian
 from penstroke.core.outline import extract_outlines
 from penstroke.render.glyph import make_glyph_svg
 from penstroke.render.alphabet import build_alphabet_svg, make_preview_html
@@ -89,6 +90,7 @@ def trace_font(
     license_id: str = "OFL-1.1",
     license_text: Optional[str] = None,
     verbose: bool = True,
+    tracer: str = 'template',
 ):
     """Process one TTF font end-to-end into a self-contained output folder.
 
@@ -150,8 +152,12 @@ def trace_font(
 
     for ch in letters:
         try:
-            mask, _skel, _dist, traced, tmpl, meta = trace_glyph(
-                ttf_path, ch, size=size, regime=regime)
+            if tracer == 'eulerian':
+                mask, _skel, _dist, traced, tmpl, meta = trace_glyph_eulerian(
+                    ttf_path, ch, size=size)
+            else:
+                mask, _skel, _dist, traced, tmpl, meta = trace_glyph(
+                    ttf_path, ch, size=size, regime=regime)
         except Exception as e:
             if verbose:
                 print(f"  {ch}: ERROR {e}")

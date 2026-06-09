@@ -1,0 +1,396 @@
+{
+  "algorithm_name": "Eulerian Pen-Stroke Tracer (EPST): Chinese-Postman T-join + Curvature-Aware Hierholzer + Kinematic Splitting",
+  "architecture_summary": "EPST replaces the Hershey-template prior with pure graph theory on the cleaned skeleton multigraph G produced by `skeleton_to_graph` + `merge_nearby_junctions` + `collapse_parallel_edges`. Per connected component, we (1) classify topology by odd-degree count and Betti number; (2) reduce parity to two trail-endpoints by minimum-weight T-join (Blossom matching over odd vertices using shortest path in G as edge weight); (3) run Hierholzer with tangent-continuity tie-breaking at each junction; (4) split the resulting Eulerian trail at high-curvature (>~95 deg) junction transitions where a human writer would lift the pen; (5) cut closed components at the topmost vertex and orient clockwise. Inter-component ordering uses bbox-based handwriting bias: large body strokes first, tiny floating components (i/j dots, punctuation tittles) last. The single global tuning knob is SHARP_TURN_DEG (default 95); everything else is structural.",
+  "data_structures": [
+    {
+      "name": "G_skel (networkx.MultiGraph)",
+      "description": "The cleaned skeleton multigraph from existing penstroke pipeline. Nodes are (y,x) int tuples of endpoints + merged junctions. Each edge carries data: 'path' (list of (y,x) pixel coords inclusive of both endpoints), 'length' (polyline arc length in px, computed by EPST), 'tan_u' (np.ndarray shape (2,), outward unit tangent at endpoint u, computed via core.strokes.tangent_at), 'tan_v' (same for endpoint v), 'retrace' (bool, set True for duplicated edges introduced by T-join augmentation)."
+    },
+    {
+      "name": "ComponentSpec",
+      "description": "Per-connected-component dataclass: { 'subgraph': MultiGraph, 'odd_vertices': list of node tuples, 'betti': int (E - V + 1), 'topology_class': enum {CLOSED_LOOP, OPEN_LINE, LINE_WITH_LOOP, TREE, MULTI_LOOP, MIXED}, 'bbox': (ymin, xmin, ymax, xmax), 'total_length': float }."
+    },
+    {
+      "name": "Walk (list of (int,int))",
+      "description": "A single stroke: ordered list of pixel coordinates (y,x), suitable for direct consumption by core.smoothing.spline_fit / ribbon-rendering. Open walks have distinct first and last points; closed walks have first == last."
+    },
+    {
+      "name": "Augmented multigraph G_aug",
+      "description": "Copy of component subgraph with T-join duplicated edges added. Used only as input to Hierholzer. Built fresh per component; never mutates G_skel."
+    },
+    {
+      "name": "edge_used set",
+      "description": "Set of (u, v, k) tuples tracking which multigraph edges Hierholzer has consumed. Stored canonically as (min(u,v), max(u,v), k) so direction-agnostic lookups work."
+    },
+    {
+      "name": "partner_map (junction-local transition table)",
+      "description": "Optional alternative formulation used during sharp-turn splitting: dict mapping (junction_node, incoming_edge_key) -> outgoing_edge_key chosen by Hierholzer. Lets the splitter reconstruct which arc-pairs are 'pass-through' vs 'cut here'."
+    }
+  ],
+  "pipeline_steps": [
+    {
+      "step": "1. Build cleaned skeleton multigraph with arc-length + tangent annotations",
+      "inputs": "skel (bool np.ndarray HxW), dist_map (float np.ndarray HxW from scipy.ndimage.distance_transform_edt).",
+      "outputs": "G_skel: networkx.MultiGraph with annotated edges as described in data structures.",
+      "algorithm": "from penstroke.core.graph import skeleton_to_graph, merge_nearby_junctions, collapse_parallel_edges\nfrom penstroke.core.strokes import tangent_at\nimport numpy as np\n\ndef build_annotated_graph(skel, dist_map):\n    G = skeleton_to_graph(skel)\n    G = merge_nearby_junctions(G, max_dist=22)\n    G = collapse_parallel_edges(G, dist_map)\n    for u, v, k, d in G.edges(keys=True, data=True):\n        path = d['path']\n        # arc length\n        arr = np.asarray(path, dtype=float)\n        diffs = np.diff(arr, axis=0)\n        d['length'] = float(np.hypot(diffs[:,0], diffs[:,1]).sum())\n        # tangents (outward, 20-px baseline)\n        d['tan_u'] = tangent_at(path, u, k=20)\n        d['tan_v'] = tangent_at(path, v, k=20)\n        d['retrace'] = False\n    return G",
+      "edge_cases_handled": "Empty skeleton: skeleton_to_graph returns empty graph -> downstream loop iterates zero components -> trace returns []. Pure closed loops have no special pixels: handled separately in step 3 via core.strokes.trace_closed_loops. Self-loops (real bowls of 'a','p','q','b','d','q','g') survive merge_nearby_junctions as edges with u==v and tan_u != tan_v.",
+      "python_libs": "networkx.MultiGraph (already used). numpy for arc-length sum. Reuse existing penstroke.core.graph and penstroke.core.strokes.tangent_at."
+    },
+    {
+      "step": "2. Split into connected components and detect orphaned closed loops",
+      "inputs": "G_skel, skel.",
+      "outputs": "List[ComponentSpec] plus separately-collected closed_loop_strokes (list of Walks) from skeleton pixels not represented in G_skel.",
+      "algorithm": "import networkx as nx\nfrom penstroke.core.strokes import trace_closed_loops\n\ndef split_components(G_skel, skel):\n    components = []\n    for nodes in nx.connected_components(G_skel):\n        Gc = G_skel.subgraph(nodes).copy()\n        if Gc.number_of_edges() == 0:\n            continue  # isolated node, emit as dot later if needed\n        odd = [n for n in Gc.nodes if Gc.degree(n) % 2 == 1]\n        betti = Gc.number_of_edges() - Gc.number_of_nodes() + 1\n        ys = [n[0] for n in Gc.nodes]; xs = [n[1] for n in Gc.nodes]\n        total_len = sum(d['length'] for _,_,d in Gc.edges(data=True))\n        spec = ComponentSpec(subgraph=Gc, odd_vertices=odd, betti=betti,\n                             topology_class=classify(odd, betti, Gc),\n                             bbox=(min(ys), min(xs), max(ys), max(xs)),\n                             total_length=total_len)\n        components.append(spec)\n    # Orphaned closed loops (no special pixels) — 'o', 'O', counter of 'D'\n    orphan_loops = trace_closed_loops(skel)\n    return components, orphan_loops\n\ndef classify(odd, betti, Gc):\n    if not odd and betti == 1: return 'CLOSED_LOOP'\n    if not odd and betti >= 2: return 'MULTI_LOOP'\n    if len(odd) == 2 and betti == 0: return 'OPEN_LINE'\n    if len(odd) == 2 and betti >= 1: return 'LINE_WITH_LOOP'\n    if len(odd) >= 4 and betti == 0: return 'TREE'\n    return 'MIXED'",
+      "edge_cases_handled": "Multi-component glyphs (i, j, !, ?, :, ;, =) become multiple ComponentSpecs. Orphaned pure cycles (o, O, where skeleton_to_graph emits zero nodes) are picked up by trace_closed_loops on the raster skel. Tiny components below MIN_COMPONENT_PX (=4 px total length) are dropped as skeleton noise. The handshake lemma guarantees |odd_vertices| is even.",
+      "python_libs": "networkx.connected_components, networkx.MultiGraph.subgraph. Reuse penstroke.core.strokes.trace_closed_loops for orphan loops."
+    },
+    {
+      "step": "3. Per-component T-join: minimum-weight matching over odd vertices",
+      "inputs": "ComponentSpec.",
+      "outputs": "Augmented multigraph G_aug (component subgraph + duplicated edges along shortest paths between matched odd pairs) and ordered list of remaining odd vertices (matchings of cardinality OPEN_PAIRS that we will use as trail endpoints, length = 2 by default).",
+      "algorithm": "import networkx as nx\nimport itertools\n\n# Tuning constants (top of module, named)\nALPHA_RETRACE = 0.6           # retrace cost coefficient on shortest-path length\nMAX_RETRACE_FRAC = 0.35       # never retrace more than 35% of component length\nLIFT_COST_PX = 150.0          # pen-lift base cost (pixel equivalent)\n\ndef tjoin_repair(spec):\n    Gc = spec.subgraph\n    odd = list(spec.odd_vertices)\n    if len(odd) <= 2:\n        # Already Eulerian (0 odd) or already a trail-ready (2 odd) graph.\n        return Gc.copy(), odd\n    # Build complete graph K over odd vertices; edge weight = min cost between\n    # retrace (ALPHA*shortest_path) and lift+euclid.\n    K = nx.Graph()\n    sp_cache = {}\n    for a, b in itertools.combinations(odd, 2):\n        d_sp = nx.shortest_path_length(Gc, a, b, weight='length')\n        path = nx.shortest_path(Gc, a, b, weight='length')\n        sp_cache[(a,b)] = (d_sp, path)\n        retrace_cost = ALPHA_RETRACE * d_sp if d_sp <= MAX_RETRACE_FRAC * spec.total_length else float('inf')\n        lift_cost    = LIFT_COST_PX + float(np.hypot(a[0]-b[0], a[1]-b[1]))\n        K.add_edge(a, b, weight=min(retrace_cost, lift_cost),\n                   kind=('retrace' if retrace_cost <= lift_cost else 'lift'))\n    matching = nx.min_weight_matching(K)\n    # Partition matching into retrace (duplicate in G_aug) vs lift (keep both odd; produce 2 trails)\n    G_aug = Gc.copy()\n    keep_odd = []  # odd vertices that will become trail start/end points\n    for (a, b) in matching:\n        if K[a][b]['kind'] == 'retrace':\n            d_sp, path = sp_cache[(a,b)] if (a,b) in sp_cache else sp_cache[(b,a)]\n            for u, v in zip(path[:-1], path[1:]):\n                k0 = min(Gc[u][v], key=lambda k: Gc[u][v][k]['length'])\n                src = Gc[u][v][k0]\n                G_aug.add_edge(u, v, path=list(src['path']), length=src['length'],\n                               tan_u=src['tan_u'], tan_v=src['tan_v'], retrace=True)\n        else:\n            keep_odd.extend([a, b])\n    return G_aug, keep_odd",
+      "edge_cases_handled": "(a) |odd| == 0: no matching needed, component is Eulerian; one closed circuit. (b) |odd| == 2: no matching needed, single trail. (c) Matching that picks both retrace and lift pairs produces both trail count = (# lift pairs) and minimal retrace. (d) When ALL pairs are forced to retrace (e.g. MAX_RETRACE_FRAC binds), we still get one trail. (e) Self-loops contribute 2 to degree so they never appear as odd. (f) Duplicated edges carry the same tangents as their source — Hierholzer treats them identically, but the splitter can reduce their visibility cost via the 'retrace' flag.",
+      "python_libs": "networkx.min_weight_matching (Blossom V), networkx.shortest_path / shortest_path_length with weight='length' (Dijkstra), itertools.combinations, numpy for Euclidean lift distance."
+    },
+    {
+      "step": "4. Hierholzer with tangent-continuity tie-breaking",
+      "inputs": "G_aug (Eulerian after T-join), keep_odd (list of 0 or 2 designated trail endpoints).",
+      "outputs": "node_trail: ordered list of (node, in_edge_key) tuples where Hierholzer consumed each edge. If keep_odd == [] returns a closed circuit; if len(keep_odd) == 2 returns an open trail from keep_odd[0] to keep_odd[1].",
+      "algorithm": "import numpy as np\n\ndef _angle(t_in, t_out_outward):\n    # t_in is tangent ARRIVING at node (pointing toward node).\n    # t_out_outward is tangent LEAVING node (pointing away from node, as stored).\n    # Straight-through means t_in and t_out_outward point in the SAME direction:\n    #   dot(t_in, t_out_outward) close to +1 -> straight.\n    #   dot close to -1 -> U-turn.\n    d = float(np.clip(np.dot(t_in, t_out_outward), -1.0, 1.0))\n    return np.arccos(d)  # 0 = straight, pi = u-turn\n\ndef hierholzer_continuity(G_aug, start, end=None):\n    used = set()                # canonical (min(u,v), max(u,v), k)\n    def canon(u, v, k):\n        return (u, v, k) if u <= v else (v, u, k)\n    # Standard nested-stack Hierholzer, modified to pick the locally most-straight\n    # outgoing edge.\n    stack = [(start, None)]     # (node, last_outward_tangent_into_node)\n    trail = []\n    while stack:\n        v, t_arrive = stack[-1]\n        cands = []\n        for nb, k, ed in [(nb, k, G_aug[v][nb][k]) for nb in G_aug.neighbors(v) for k in G_aug[v][nb]]:\n            if canon(v, nb, k) in used: continue\n            t_out = ed['tan_u'] if ed['path'][0] == v else ed['tan_v']\n            cands.append((nb, k, t_out, ed))\n        if not cands:\n            node, _ = stack.pop()\n            trail.append(node)\n            continue\n        # Score: lower is better.\n        # primary: turn angle (straight through preferred)\n        # secondary: prefer non-retrace edges\n        # tertiary: prefer longer edges (stay on the main stroke)\n        if t_arrive is None:\n            # First step: pick edge with steepest downward + leftward tangent (writing bias)\n            cands.sort(key=lambda c: (-c[2][0], c[2][1]))\n        else:\n            cands.sort(key=lambda c: (_angle(-t_arrive, c[2]),\n                                       1 if c[3].get('retrace', False) else 0,\n                                       -c[3]['length']))\n        nb, k, t_out, ed = cands[0]\n        used.add(canon(v, nb, k))\n        # The tangent arriving at nb (pointing toward nb) is -t_out_from_v evaluated at nb,\n        # which is the outward tangent at nb's side, negated.\n        t_arrive_at_nb = -(ed['tan_v'] if ed['path'][0] == v else ed['tan_u'])\n        stack.append((nb, t_arrive_at_nb))\n    trail.reverse()\n    # If end is required, rotate (closed circuit) or assert (open trail) accordingly.\n    return trail",
+      "edge_cases_handled": "(a) Self-loops: u == v, path differs at the two ends; Hierholzer picks one outgoing tangent, returns at node, and the loop is consumed in a single visit. The 'arrive' tangent at the return is -tan_v (or tan_u depending on traversal direction). (b) Multigraph parallel edges: keys disambiguate. (c) Disconnection after partial consumption is impossible because G_aug is Eulerian and Hierholzer's stack-rewind property handles partial cycles. (d) First-step bias picks topmost-leftmost-going-down tangent so Latin glyphs start in the conventional direction.",
+      "python_libs": "Pure numpy + dict operations. No reliance on nx.eulerian_circuit because we need custom edge selection — but nx.eulerian_circuit's signature (graph, source, keys=True) is the validation reference."
+    },
+    {
+      "step": "5. Sharp-turn splitting (kinematic cut)",
+      "inputs": "node_trail from Hierholzer, G_aug, SHARP_TURN_DEG (default 95).",
+      "outputs": "list[Walk]: each Walk is a list of (y, x) pixel coords ready for smoothing.",
+      "algorithm": "import math, numpy as np\nfrom penstroke.core.strokes import tangent_at\nSHARP_TURN = math.radians(95)\nMIN_WALK_LEN_PX = 6.0\n\ndef trail_to_pixels_and_split(node_trail, G_aug):\n    # Step A: reconstruct the ordered list of edges consumed, with their oriented pixel paths.\n    consumed = []                       # list of dicts: {'u','v','key','path_oriented','length'}\n    used_keys = {}                      # multiset counter per (u,v): which keys consumed\n    for u, v in zip(node_trail[:-1], node_trail[1:]):\n        # Pop the next-unused multiedge key between u and v.\n        # (We can rebuild this map from a single pass; cf. step 4's used set.)\n        candidates = sorted(G_aug[u][v].keys())\n        used_keys.setdefault((u,v), 0); used_keys.setdefault((v,u), 0)\n        idx = used_keys[(u,v)] + used_keys[(v,u)]\n        k = candidates[idx % len(candidates)]\n        used_keys[(u,v)] += 1\n        path = G_aug[u][v][k]['path']\n        if tuple(path[0]) != u: path = path[::-1]\n        consumed.append({'u':u, 'v':v, 'key':k, 'path':path, 'length':G_aug[u][v][k]['length']})\n    # Step B: walk through `consumed`, accumulating pixels. At each transition\n    # u->v->w, evaluate the turn angle at v. If > SHARP_TURN and v is a junction,\n    # cut: emit the accumulated walk and start a new one at v.\n    walks = []\n    current = list(consumed[0]['path'])\n    for i in range(1, len(consumed)):\n        prev_e = consumed[i-1]\n        next_e = consumed[i]\n        v = prev_e['v']                                 # junction node\n        # tangent arriving at v from prev edge (pointing INTO v)\n        t_in  = -tangent_at(prev_e['path'], v, k=20)    # tangent_at returns AWAY-from-node, negate\n        t_out = tangent_at(next_e['path'], v, k=20)     # AWAY from v on next edge\n        # Turn angle = pi - dot(t_in, t_out)?  Use: theta = pi - arccos(dot(t_in_arriving_dir, t_out_leaving_dir))\n        # Both vectors point at the LEAVING direction relative to v if we set t_in_leaving = -t_in.\n        # Simpler: straight-through means t_in_arriving_dir == t_out_leaving_dir.\n        # t_in_arriving_dir is direction we MOVED INTO v. t_out_leaving_dir is direction we MOVE OUT.\n        # straight: arccos(dot) ~ 0; U-turn: ~pi.\n        t_in_arr = -t_in   # direction of motion arriving at v = -outward-from-v = into-v\n        cos_a = float(np.clip(np.dot(t_in_arr, t_out), -1.0, 1.0))\n        theta = math.acos(cos_a)                       # 0 = straight, pi = u-turn\n        is_junction = (G_aug.degree(v) >= 3)\n        if is_junction and theta >= SHARP_TURN:\n            if polyline_length(current) >= MIN_WALK_LEN_PX:\n                walks.append(current)\n            current = list(next_e['path'])\n        else:\n            # continuation: skip first pixel of next path to avoid duplication\n            current.extend(next_e['path'][1:])\n    if polyline_length(current) >= MIN_WALK_LEN_PX:\n        walks.append(current)\n    return walks",
+      "edge_cases_handled": "(a) Single-edge trail: consumed has length 1, loop body never executes, single walk emitted. (b) Self-loop at a junction: prev_e and next_e may both attach to the same node v; the turn from arriving at v to leaving along self-loop is evaluated normally — for clean bowls the tangent is roughly perpendicular to the stem direction, often producing a split (good: 'b' becomes stem + bowl). (c) MIN_WALK_LEN_PX drops the tiny stubs created by aggressive splitting in noisy skeletons. (d) Even when SHARP_TURN doesn't fire, retrace edges produce no extra splits — they overlay the original path on render.",
+      "python_libs": "math.radians/acos, numpy (for clip + tangent dot), reuse penstroke.core.strokes.tangent_at for consistent tangent baseline."
+    },
+    {
+      "step": "6. Closed-component handling (CLOSED_LOOP and MULTI_LOOP)",
+      "inputs": "ComponentSpec where odd_vertices == [], or orphan_loops from step 2.",
+      "outputs": "list[Walk] with closed walks rotated to start at topmost vertex and oriented clockwise.",
+      "algorithm": "import numpy as np\n\ndef handle_closed_component(spec):\n    Gc = spec.subgraph\n    if Gc.number_of_nodes() == 0:\n        return []\n    # Pick deterministic start: topmost (min y) then leftmost (min x).\n    start = min(Gc.nodes, key=lambda n: (n[0], n[1]))\n    G_aug = Gc.copy()\n    trail = hierholzer_continuity(G_aug, start)\n    walks = trail_to_pixels_and_split(trail, G_aug)\n    # If no sharp turn fired and we have one closed walk, ensure clockwise orientation.\n    walks = [orient_clockwise_if_closed(w) for w in walks]\n    return walks\n\ndef orient_clockwise_if_closed(walk):\n    if walk[0] != walk[-1]:\n        return walk\n    arr = np.asarray(walk, dtype=float)\n    # Shoelace in image coords (y goes DOWN): positive = clockwise visually.\n    x = arr[:,1]; y = arr[:,0]\n    area2 = float(np.sum(x[:-1]*y[1:] - x[1:]*y[:-1]))\n    if area2 < 0:           # counter-clockwise in image coords\n        walk = walk[::-1]\n    # Rotate so topmost pixel of the closed walk is first.\n    top_idx = int(np.argmin([p[0] for p in walk[:-1]]))\n    walk = walk[top_idx:-1] + walk[:top_idx] + [walk[top_idx]]\n    return walk\n\ndef handle_orphan_loop(pixel_list):\n    # Already comes from trace_closed_loops which rotates+orients; just pass through.\n    return pixel_list",
+      "edge_cases_handled": "Pure cycles where skeleton_to_graph produces zero nodes (o, O): handled by orphan_loops branch using trace_closed_loops on raster. MULTI_LOOP (theta-shapes, B, figure-8): the all-even junction has multiple Eulerian circuits; the sharp-turn splitter in step 5 cuts them at the pinch since arrival and departure tangents are anti-parallel. If no sharp turn fires, MULTI_LOOP emits a single Eulerian circuit, which is acceptable but rare for Latin.",
+      "python_libs": "numpy.argmin, numpy.sum for shoelace, reuse trace_closed_loops for orphan-loop pixel walks."
+    },
+    {
+      "step": "7. Open-component handling (everything else)",
+      "inputs": "ComponentSpec where odd_vertices is non-empty.",
+      "outputs": "list[Walk] for this component.",
+      "algorithm": "def handle_open_component(spec):\n    G_aug, keep_odd = tjoin_repair(spec)\n    if len(keep_odd) == 2:\n        start, end = pick_trail_endpoints(keep_odd, spec)\n        trail = hierholzer_continuity(G_aug, start, end=end)\n        return trail_to_pixels_and_split(trail, G_aug)\n    elif len(keep_odd) == 0:\n        # All matched as retrace -> single closed circuit\n        start = min(G_aug.nodes, key=lambda n: (n[0], n[1]))\n        trail = hierholzer_continuity(G_aug, start)\n        return trail_to_pixels_and_split(trail, G_aug)\n    else:\n        # Multiple lift pairs -> multiple open trails. Ghost-edge trick.\n        pairs = pair_keep_odd_for_ghosts(keep_odd, G_aug)\n        ghost_keys = []\n        for (a, b) in pairs[1:]:\n            kk = G_aug.add_edge(a, b, path=[a, b], length=0.0,\n                                tan_u=np.zeros(2), tan_v=np.zeros(2),\n                                retrace=False, ghost=True)\n            ghost_keys.append((a, b, kk))\n        start, end = pairs[0]\n        trail = hierholzer_continuity(G_aug, start, end=end)\n        # Split trail at ghost edges and split each piece at sharp turns.\n        sub_trails = split_at_ghosts(trail, ghost_keys)\n        walks = []\n        for st in sub_trails:\n            walks.extend(trail_to_pixels_and_split(st, G_aug))\n        return walks\n\ndef pick_trail_endpoints(keep_odd, spec):\n    # Deterministic: start at topmost-leftmost vertex of keep_odd; end at the other.\n    keep_odd_sorted = sorted(keep_odd, key=lambda n: (n[0], n[1]))\n    return keep_odd_sorted[0], keep_odd_sorted[-1]",
+      "edge_cases_handled": "(a) Default case (2 keep_odd) covers all simple letters l, t, m, h, x, etc. (b) Ghost-edge trick handles multiple-lift scenarios (rare but happens when many odd vertices are far apart). (c) Zero-length ghost edges introduce no sharp-turn-splittable transition because their tangents are zero vectors — guard in splitter: if tangent norm < 1e-6, treat as forced split. (d) When |keep_odd|==0 after retracing everything, we emit a single circuit and rely on splitter for opening.",
+      "python_libs": "Same as previous steps plus optional handshake-counting helper."
+    },
+    {
+      "step": "8. Inter-component ordering and final orientation",
+      "inputs": "list of (component_id, walks) from all components + orphan_loops.",
+      "outputs": "Flat ordered list[Walk] in handwriting order.",
+      "algorithm": "import numpy as np\n\ndef order_all_walks(components_walks, orphan_loop_walks, all_specs):\n    # Build (walk, source_component_bbox, source_total_length).\n    entries = []\n    for spec, walks in zip(all_specs, components_walks):\n        for w in walks:\n            entries.append((w, spec.bbox, spec.total_length))\n    for w in orphan_loop_walks:\n        arr = np.asarray(w)\n        bbox = (int(arr[:,0].min()), int(arr[:,1].min()), int(arr[:,0].max()), int(arr[:,1].max()))\n        total_len = polyline_length(w)\n        entries.append((w, bbox, total_len))\n    # Determine 'main body' size: the median component total length.\n    main_size = float(np.median([t for (_, _, t) in entries])) if entries else 0.0\n    SMALL_FRAC = 0.30\n    def sort_key(entry):\n        w, bbox, tot = entry\n        ymin, xmin, ymax, xmax = bbox\n        # Tiny floating component (i/j dot, punctuation tittle) -> push to end.\n        is_tiny = (tot < SMALL_FRAC * main_size)\n        # Band by y in 60px bins (canvas-relative).\n        band = ymin // 60\n        # Within band: verticals before horizontals.\n        warr = np.asarray(w)\n        wymin, wymax = warr[:,0].min(), warr[:,0].max()\n        wxmin, wxmax = warr[:,1].min(), warr[:,1].max()\n        is_vertical = 1 if (wymax - wymin) > 1.2 * (wxmax - wxmin) else 0\n        return (1 if is_tiny else 0, band, -is_vertical, warr[:,1].min(), warr[:,0].min())\n    entries.sort(key=sort_key)\n    # Final per-walk orientation: open walks already oriented by Hierholzer start;\n    # but enforce vertical top->bottom and horizontal left->right via existing\n    # core.strokes.order_strokes orient logic on each open walk.\n    out = []\n    for (w, _, _) in entries:\n        out.append(orient_walk_for_writing(w))\n    return out\n\ndef orient_walk_for_writing(w):\n    if w[0] == w[-1]:\n        return w  # closed walk already CW + topmost-first\n    arr = np.asarray(w)\n    dy = arr[-1,0] - arr[0,0]; dx = arr[-1,1] - arr[0,1]\n    if abs(dy) > abs(dx):\n        if dy < 0: w = w[::-1]\n    else:\n        if dx < 0: w = w[::-1]\n    return w",
+      "edge_cases_handled": "Dotted glyphs (i, j): the dot's bbox top is ABOVE the stem in image coords, so without the is_tiny push-to-end it would sort first. The is_tiny rule pushes any component whose total_length < 30% of median to the end. Punctuation (?, !, :, ;) similarly: the dot component goes last. Single-walk glyphs (l, c) have nothing to reorder.",
+      "python_libs": "numpy.median, numpy.asarray; reuse penstroke.core.strokes.order_strokes orientation rule (verticals top->bottom, horizontals left->right)."
+    },
+    {
+      "step": "9. Top-level entry point",
+      "inputs": "skel, dist_map (already produced by core.skeleton.skeletonize_with_widths in the existing pipeline).",
+      "outputs": "List[Walk] ready for core.smoothing.spline_fit -> ribbon rendering -> SVG.",
+      "algorithm": "def trace_glyph_eulerian(skel, dist_map):\n    G = build_annotated_graph(skel, dist_map)\n    specs, orphan_loops = split_components(G, skel)\n    components_walks = []\n    for spec in specs:\n        if spec.topology_class in ('CLOSED_LOOP', 'MULTI_LOOP'):\n            components_walks.append(handle_closed_component(spec))\n        else:\n            components_walks.append(handle_open_component(spec))\n    ordered = order_all_walks(components_walks, orphan_loops, specs)\n    # Drop walks shorter than the minimum stroke length (skeleton noise).\n    return [w for w in ordered if polyline_length(w) >= MIN_WALK_LEN_PX]",
+      "edge_cases_handled": "Wires into existing pipeline at the same insertion point as templates.trace.trace_glyph — same signature (skel, dist_map -> list of pixel walks), drop-in replacement for the Hershey-template tracer. Outputs feed directly into core.smoothing without changes.",
+      "python_libs": "Composition step only; all primitives already imported."
+    }
+  ],
+  "canonical_decompositions": [
+    {
+      "letter": "o",
+      "topology": "CLOSED_LOOP (orphan: skeleton has no special pixels; betti=1, odd=0)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "closed loop, start at topmost pixel, clockwise"
+      ]
+    },
+    {
+      "letter": "l",
+      "topology": "OPEN_LINE (2 endpoints, betti=0)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top endpoint -> bottom endpoint"
+      ]
+    },
+    {
+      "letter": "a",
+      "topology": "LINE_WITH_LOOP (single-story 'a' from most sans-serifs: tail endpoint at bottom-right + closed bowl meeting tail at one degree-3 junction; betti=1, odd=2)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "bowl: topmost of bowl, clockwise around, ending at junction",
+        "tail: junction -> bottom-right endpoint"
+      ]
+    },
+    {
+      "letter": "b",
+      "topology": "LINE_WITH_LOOP (stem with closed bowl attached at one degree-3 junction; betti=1, odd=2: stem-top and junction)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "stem: top -> junction (downstroke)",
+        "bowl: junction, clockwise back to junction (closed self-loop)"
+      ]
+    },
+    {
+      "letter": "c",
+      "topology": "OPEN_LINE (single curved arc, 2 endpoints; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top-right endpoint -> bottom-right endpoint (curving left)"
+      ]
+    },
+    {
+      "letter": "d",
+      "topology": "LINE_WITH_LOOP (mirror of b: stem on the right with closed bowl on the left; betti=1, odd=2)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "bowl: junction, counter-clockwise back to junction",
+        "stem: top -> bottom"
+      ]
+    },
+    {
+      "letter": "e",
+      "topology": "LINE_WITH_LOOP (closed top loop with horizontal bar exiting on the right; betti=1, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "bar-right endpoint -> through junction -> around loop back to junction"
+      ]
+    },
+    {
+      "letter": "f",
+      "topology": "TREE (vertical stem with crossbar, 4 endpoints, 1 degree-4 junction; betti=0, odd=4)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "stem: top -> bottom",
+        "crossbar: left -> right"
+      ]
+    },
+    {
+      "letter": "g",
+      "topology": "LINE_WITH_LOOP for single-story g (bowl + descender with hook; betti=1, odd=2); MULTI_LOOP for double-story g (betti=2)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "bowl: topmost clockwise",
+        "descender: junction -> tail tip"
+      ]
+    },
+    {
+      "letter": "h",
+      "topology": "TREE (stem + arch; 3 endpoints + 1 degree-3 junction; betti=0, odd=4)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "stem-top -> stem-bottom -> back up through retrace -> arch -> right-foot OR equivalently split by sharp-turn at arch base into 2 walks if turn >= 95deg: stem top->bottom, then arch left->right"
+      ]
+    },
+    {
+      "letter": "i",
+      "topology": "2-COMPONENT: stem OPEN_LINE + tittle CLOSED_LOOP (or single-pixel dot)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "stem: top -> bottom",
+        "dot: tiny closed walk (placed last due to is_tiny rule)"
+      ]
+    },
+    {
+      "letter": "j",
+      "topology": "2-COMPONENT: curved stem with hook OPEN_LINE + tittle CLOSED_LOOP",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "stem: top -> hook tail tip (smooth curve, no sharp split)",
+        "dot: tiny closed walk last"
+      ]
+    },
+    {
+      "letter": "k",
+      "topology": "TREE (stem + arm-fork at one degree-3 junction or two close degree-3 junctions; 4 endpoints; betti=0, odd=4)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "stem: top -> bottom (Hierholzer continuity prefers stem-straight through junction)",
+        "arm: upper-arm-tip -> junction -> lower-arm-tip (sharp-turn split at junction separates this from stem)"
+      ]
+    },
+    {
+      "letter": "m",
+      "topology": "TREE (3 feet + 2 degree-3 junctions at hump tops; betti=0, odd>=4)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "one continuous zigzag walk: top-left -> down-left -> up first hump -> down -> up second hump -> down-right (humps are smooth turns under 95deg threshold)"
+      ]
+    },
+    {
+      "letter": "n",
+      "topology": "TREE (mirror of h without the tall stem; 2 feet + arch; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "left foot -> up -> arch over -> down to right foot (one smooth walk)"
+      ]
+    },
+    {
+      "letter": "p",
+      "topology": "LINE_WITH_LOOP (descender stem + closed bowl on right; betti=1, odd=2)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "stem: top -> descender tip",
+        "bowl: junction, clockwise back to junction"
+      ]
+    },
+    {
+      "letter": "q",
+      "topology": "LINE_WITH_LOOP (mirror of p; betti=1, odd=2)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "bowl: topmost clockwise",
+        "stem: top -> descender tip"
+      ]
+    },
+    {
+      "letter": "r",
+      "topology": "TREE (stem + short arm at one degree-3 junction; 3 endpoints; betti=0, odd>=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "stem top -> junction -> arm tip (one walk via Hierholzer; sharp turn at junction may split into 2)"
+      ]
+    },
+    {
+      "letter": "s",
+      "topology": "OPEN_LINE (single curved snake, 2 endpoints; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top endpoint -> bottom endpoint (smooth S-curve, no sharp turns)"
+      ]
+    },
+    {
+      "letter": "t",
+      "topology": "TREE (stem + crossbar at one degree-4 junction; 4 endpoints; betti=0, odd=4)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "stem: top -> bottom (continuity preserves vertical at junction)",
+        "crossbar: left -> right (sharp-turn split at junction separates 90-deg transitions)"
+      ]
+    },
+    {
+      "letter": "u",
+      "topology": "OPEN_LINE (U-shape, 2 endpoints; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top-left endpoint -> down -> right -> top-right endpoint (smooth U)"
+      ]
+    },
+    {
+      "letter": "v",
+      "topology": "OPEN_LINE (V-shape, 2 endpoints with single degree-2 corner; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top-left -> apex -> top-right (single trail; apex angle typically ~60deg, below 95deg threshold, so no split)"
+      ]
+    },
+    {
+      "letter": "w",
+      "topology": "OPEN_LINE (W shape with 2 endpoints + 3 smooth degree-2 corners; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top-left -> bottom-left -> top-middle -> bottom-right -> top-right (one zigzag walk)"
+      ]
+    },
+    {
+      "letter": "x",
+      "topology": "TREE (2 diagonals crossing at one degree-4 junction; 4 endpoints; betti=0, odd=4)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "NW-arm -> SE-arm (continuity preserves straight-through at center)",
+        "NE-arm -> SW-arm (second diagonal; sharp-turn split at center)"
+      ]
+    },
+    {
+      "letter": "y",
+      "topology": "TREE (V on top + descender stem; 3 endpoints + 1 junction; betti=0, odd=4) OR LINE_WITH_LOOP if descender curls",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "right-arm top -> junction -> descender tip (continuity preserves the right-diagonal-into-descender curve)",
+        "left-arm top -> junction (split by sharp turn at junction)"
+      ]
+    },
+    {
+      "letter": "z",
+      "topology": "OPEN_LINE (Z shape, 2 endpoints + 2 smooth corners; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top-left -> top-right -> bottom-left -> bottom-right (one walk, corners ~60deg, no split unless SHARP_TURN tuned tight)"
+      ]
+    },
+    {
+      "letter": "A",
+      "topology": "MIXED (apex + 2 leg feet + crossbar attached at 2 degree-3 junctions; betti=1 from triangle, odd=2 from feet)",
+      "expected_strokes": 3,
+      "stroke_order": [
+        "left leg: apex -> junction_L -> left-foot (sharp-turn split at junction_L for crossbar branch)",
+        "right leg: apex -> junction_R -> right-foot",
+        "crossbar: junction_L -> junction_R (separate walk after retracing logic OR after split)"
+      ]
+    },
+    {
+      "letter": "B",
+      "topology": "MULTI_LOOP (stem + 2 stacked bowls sharing middle junction; betti=2, odd=2 from stem ends)",
+      "expected_strokes": 3,
+      "stroke_order": [
+        "stem: top -> bottom",
+        "upper bowl: middle junction clockwise back to middle junction (sharp-turn at junction separates from stem)",
+        "lower bowl: middle junction clockwise back to middle junction"
+      ]
+    },
+    {
+      "letter": "M",
+      "topology": "TREE (typical sans: 2 outer feet endpoints + valley junction + 2 peak smooth points; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "bottom-left -> top-left-peak -> valley -> top-right-peak -> bottom-right (single zigzag; sharp peaks/valleys typically 60-80deg, no split at default 95)"
+      ]
+    },
+    {
+      "letter": "H",
+      "topology": "TREE (2 stems + crossbar at 2 degree-3 junctions; 4 endpoints; betti=0, odd=4)",
+      "expected_strokes": 3,
+      "stroke_order": [
+        "left stem: top -> bottom",
+        "crossbar: junction_L -> junction_R",
+        "right stem: top -> bottom (T-join matches feet with junctions, sharp-turn splits separate the three walks)"
+      ]
+    },
+    {
+      "letter": "W",
+      "topology": "OPEN_LINE (zigzag, 2 endpoints + 3 smooth corners; betti=0, odd=2)",
+      "expected_strokes": 1,
+      "stroke_order": [
+        "top-left -> bottom-left-valley -> top-middle -> bottom-right-valley -> top-right (one walk)"
+      ]
+    },
+    {
+      "letter": "X",
+      "topology": "TREE (4 endpoints + 1 degree-4 junction at center; betti=0, odd=4)",
+      "expected_strokes": 2,
+      "stroke_order": [
+        "NW arm -> SE arm (continuity preserves diagonal through center)",
+        "NE arm -> SW arm (sharp-turn split at center separates the two diagonals)"
+      ]
+    }
+  ],
+  "start_point_rules": "DETERMINISTIC START-POINT RULES (applied in priority order):\n\nA. PER-COMPONENT START SELECTION\n   1. Closed components (orphan loops + CLOSED_LOOP + MULTI_LOOP with no odd vertices): start at the topmost vertex; break ties by leftmost (min y, then min x in (y, x) image coords). Orient clockwise in image coordinates (positive shoelace area in image-y-down frame). Rotate the closed pixel list so this vertex is index 0 (and index -1 for closure).\n   2. Open trails with exactly 2 designated odd endpoints (keep_odd): start at the topmost-leftmost of the two (sorted by (y, x)). End at the other.\n   3. Multi-trail components (ghost-edge case): the FIRST trail starts at the topmost-leftmost of all keep_odd; subsequent trails are paired by minimum total Euclidean span (small assignment problem, brute force fine for k <= 4 pairs).\n\nB. HIERHOLZER FIRST-EDGE BIAS (only when no arriving tangent exists)\n   At the start vertex, no t_arrive is defined, so the tangent-continuity score degenerates. Resolve by:\n   1. Prefer the outgoing edge whose outward tangent points most downward (highest +y component); tiebreak by leftward (lowest x component).\n   This produces Latin-convention downstrokes: 'l' starts going down, the stem of 't' starts going down, the left leg of 'A' starts going down-and-out.\n\nC. HIERHOLZER MID-TRAIL TIE-BREAKING (at junctions with multiple unused outgoing edges)\n   Score = (turn_angle, retrace_flag_int, -edge_length). Lower is better.\n   - turn_angle: arccos(dot(t_arrive_dir, t_out_outward)); 0=straight, pi=U-turn.\n   - retrace flag: prefer non-retrace edges when equally straight (visual cleanliness).\n   - longer edge preferred to keep the main stroke continuous.\n\nD. INTER-COMPONENT ORDERING\n   Sort key per emitted walk: (is_tiny: 0|1, y_band: ymin//60, -is_vertical: 0|-1, xmin, ymin).\n   - is_tiny: component total length < 0.30 * median(component total lengths). Pushes 'i'/'j' dots and punctuation tittles to the end.\n   - y_band: 60-pixel horizontal bands top-to-bottom.\n   - is_vertical: walk bbox height > 1.2 * width; verticals come first within a band (mirrors how humans write the stem of 't' before the crossbar).\n   - Final tiebreak: leftmost-then-topmost start pixel.\n\nE. PER-WALK FINAL ORIENTATION\n   For open walks: if bbox is taller than wide and end-y < start-y, reverse (force top->bottom). If wider than tall and end-x < start-x, reverse (force left->right). Closed walks keep their cw orientation from step (A.1).\n\nF. DETERMINISM\n   All sorts are total orderings on integer (y, x) tuples and floats with explicit tiebreakers. No randomness, no hashed dict iteration that depends on memory addresses (always use sorted(...) when iterating G.nodes / matching results). networkx.min_weight_matching is deterministic given a deterministic node enumeration; we enforce this by sorting `odd` before building K.",
+  "open_questions": [
+    "SHARP_TURN_DEG calibration: the spec defaults to 95deg, which the reviewers showed is the right knob for separating 't' (90deg split desired) from 'm' (~60-80deg humps should NOT split) and 'M' (~60-80deg peaks should NOT split). But 'h' is borderline: the arch joins the stem at a transition that can read as 90-100deg depending on font. Run a per-font calibration on the existing test fixtures (caveat.ttf and any batch-tested Google Fonts) and decide whether to keep one global constant, expose a CLI flag, or introduce per-junction thresholds based on local skeleton thickness (degree-3 stub-junctions tighter than degree-4 crossings).",
+    "ALPHA_RETRACE / LIFT_COST_PX / MAX_RETRACE_FRAC interplay for the T-join: the proposed defaults (0.6 / 150px / 0.35) were sketched by the motor-neuroscientist and the python-implementer with different units. Empirically calibrate by checking that 'A' picks 3 trails (which requires a SMALL retrace pair) and 'i' picks 2 trails (which requires the dot to be a separate lift). Probably need to make LIFT_COST_PX scale with canvas size so it works at 384 and 512 px renders.",
+    "Self-loop hanging off a junction (b, B, p, q): the sharp-turn split rule at the bowl-junction will reliably separate stem from bowl ONLY if the bowl tangent at the junction is sufficiently anti-parallel to the stem tangent. For round bowls this is true; for sloped italic fonts the angle may be ~60-80deg. Decide whether to add an explicit 'self-loop edge always starts a new walk' rule (clean but special-case) or trust the sharp-turn rule with a tuned threshold.",
+    "k disambiguation: when |odd|==4 and the natural matching produces a single-walk Eulerian trail through the central junction, the resulting trail can be ugly (zig-zag through center). The spec relies on sharp-turn splitting at the central junction to recover two clean walks. Verify on multiple sans + serif fonts; if it produces visual artifacts, add the python-implementer's suggested tie-breaker: 'prefer matchings whose pairs share NO intermediate odd nodes'.",
+    "First-edge bias direction conventions: the spec hardcodes 'most downward then leftward' for the first outgoing edge, which is right for Latin. For Hebrew/Arabic this would need flipping. Decide whether to expose this as a per-script setting now or defer until we add RTL scripts.",
+    "Orphan-loop detection (step 2) uses skel directly via trace_closed_loops. If a font produces a glyph that is a CLOSED_LOOP component WITH a degree-2 anchor (rare but possible after merging), it would be double-counted. Mitigation: after split_components, mask out skeleton pixels covered by any ComponentSpec before running trace_closed_loops. Concretely, raster the union of all edge['path'] paths into a bool mask and subtract from skel.",
+    "Hierholzer tangent at the START vertex: arccos(-t_arrive . t_out) is undefined when t_arrive is the zero vector. The spec resolves this with a downward-leftward bias, but we should sanity-check that this doesn't produce wrong-direction strokes on letters that conventionally start by going up-and-right (cursive 'e' starts on a horizontal entry stroke). For now we assume printed-style fonts; revisit if cursive fonts are added to the test set.",
+    "Edge-key tracking in step 5: the simple 'pop next key from sorted(G_aug[u][v].keys())' assumes Hierholzer step 4 also used keys in sorted order. Safer: have step 4 return the consumed edges as (u, v, k) triples directly, and skip the reconstruction in step 5. Refactor decision.",
+    "Performance on calligraphic / bold fonts with many serifs: |odd_vertices| can exceed 8 for some serif faces. min_weight_matching is O(V^3); 8 vertices is fine, 16 is starting to hurt. If we ever see |odd| > 12 in practice, switch to scipy.optimize.linear_sum_assignment with a bipartite reformulation OR cap the matching at top-K nearest-pair candidates per vertex.",
+    "How does this interact with the existing core.smoothing pipeline? The spec emits Walks as lists of (y, x) integer pixel tuples, which is exactly what spline_fit/per_point_widths consume today. But the per-walk width profile via dist_map is computed downstream; verify that retraced (duplicated) walks don't produce double-width artifacts when rendered. Likely fine because retrace is on the same pixel path, but worth a visual regression check.",
+    "Where to slot EPST in: templates.trace.trace_glyph is the current production tracer; pipeline.py.trace_font() calls it. Add EPST as templates/eulerian.py with a `trace_glyph_eulerian(skel, dist_map)` function and put a CLI flag (--tracer eulerian|template) that pipeline.py dispatches on. Keep template tracer as default for now; flip default after we have parity QA report. Update tests/test_smoke.py to cover both tracers."
+  ]
+}

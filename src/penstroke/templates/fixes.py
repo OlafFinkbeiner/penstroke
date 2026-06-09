@@ -432,6 +432,60 @@ def deduplicate_overlapping_strokes(traced,
     return [s for k, s in enumerate(traced) if k not in dropped]
 
 
+def trim_winding_prefix(traced, min_prefix_len=10, min_height_drop=12):
+    """If a stroke walks UP to its topmost before drawing down, drop the
+    walk-up portion. Specifically intended for script regime.
+
+    Some Hershey cursive templates encode the pen-placement as part of
+    the path: Caveat 'b' via Hershey cursive starts at the BOTTOM of
+    the stem, walks up to the top, then comes back down through the
+    stem and around the bowl. The walk-up is the "place the pen at the
+    top" step — invisible in real handwriting but the template walker
+    emits it as drawn ink.
+
+    Detect: the prefix [0..top_idx] is essentially monotonically going
+    up (y decreasing with no significant reversals), AND the prefix
+    actually traverses meaningful height (≥ min_height_drop), AND the
+    topmost is interior. Then return the stroke truncated to
+    [top_idx..end], so the trace now starts at the topmost and goes
+    DOWN — natural writing direction.
+
+    Multi-hump waves (m, w) and N-tours where the prefix has multiple
+    peaks are LEFT ALONE — their prefix is not monotonic.
+    """
+    out = []
+    for xs, ys, ws in traced:
+        n = len(ys)
+        if n < min_prefix_len * 2:
+            out.append((xs, ys, ws))
+            continue
+        top_idx = int(np.argmin(ys))
+        if top_idx < min_prefix_len or top_idx > n - min_prefix_len:
+            out.append((xs, ys, ws))
+            continue
+        prefix_ys = ys[:top_idx + 1]
+        # Lightly smooth to ignore spline wobble
+        w = max(3, len(prefix_ys) // 20)
+        kernel = np.ones(w) / w
+        sm = np.convolve(prefix_ys, kernel, mode='valid')
+        # Did the prefix actually drop meaningful height?
+        height_drop = float(sm[0] - sm[-1])
+        if height_drop < min_height_drop:
+            out.append((xs, ys, ws))
+            continue
+        # Monotonic-going-up = all (or nearly all) diffs ≤ 0.
+        diffs = np.diff(sm)
+        up_fraction = float((diffs <= 0).mean())
+        if up_fraction < 0.95:
+            out.append((xs, ys, ws))   # not monotonic — leave alone
+            continue
+        # Trim: keep from topmost onward
+        out.append((xs[top_idx:].copy(),
+                    ys[top_idx:].copy(),
+                    ws[top_idx:].copy()))
+    return out
+
+
 def order_strokes_main_first(traced, main_height_fraction=0.55):
     """Reorder strokes so main strokes come first (left-to-right), then
     accessories (top-to-bottom).

@@ -322,8 +322,8 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5,
     from penstroke.templates.fixes import (
         extend_strokes_into_spurs, cover_missing_branches,
         merge_endpoint_adjacent_strokes, split_topmost_interior_strokes,
-        deduplicate_overlapping_strokes, normalize_stroke_directions,
-        order_strokes_main_first,
+        deduplicate_overlapping_strokes, trim_winding_prefix,
+        normalize_stroke_directions, order_strokes_main_first,
     )
     extend_strokes_into_spurs(strokes_pixels, pixel_G)
 
@@ -344,20 +344,20 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5,
     # template walker emitted as two records is always right.
     merge_endpoint_adjacent_strokes(traced)
 
-    # Stage 4 — split — applies to BOTH regimes. It's selective: it only
-    # fires on true N-shape paths (topmost interior AND the path returns
-    # close to its start), which catches Caveat 'b' (bottom-up stem +
-    # bowl tour) but does NOT fire on Caveat 'm' (multi-hump wave moves
-    # rightward, no return to start). So split helps script too.
-    traced = split_topmost_interior_strokes(traced)
-
-    # Stage 5 — dedup — is PRINT-regime only. Script fonts legitimately
-    # retrace because lifting the pen costs more than going over a line
-    # again; dropping the "duplicate" record loses a real motion. Print
-    # fonts have no biomechanical excuse for overlap — duplicate strokes
-    # there are just pipeline leakage.
+    # Stages 4 & 5 — print-regime cleanup.
+    # Split fires on N-shape tour paths (topmost interior + returns
+    # near start); dedup drops mutually-contained strokes. Both are
+    # legitimate cleanup steps for print decompositions where there's
+    # no biomechanical reason for the pipeline to produce duplicates
+    # or N-tours. For script regime we instead use trim_winding_prefix
+    # (stage 4b) which handles the cursive-template case where the
+    # template walker walks UP a stem before walking down — that bit
+    # would be a pen placement, not a drawn stroke.
     if regime == 'print':
+        traced = split_topmost_interior_strokes(traced)
         traced = deduplicate_overlapping_strokes(traced)
+    else:
+        traced = trim_winding_prefix(traced)
 
     # Stage 6: enforce top-down by flipping strokes drawn bottom-up.
     traced = normalize_stroke_directions(traced)

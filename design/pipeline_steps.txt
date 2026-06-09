@@ -1,0 +1,304 @@
+=== STEP 1: 1. Build cleaned skeleton multigraph with arc-length + tangent annotations ===
+inputs:  skel (bool np.ndarray HxW), dist_map (float np.ndarray HxW from scipy.ndimage.distance_transform_edt).
+outputs: G_skel: networkx.MultiGraph with annotated edges as described in data structures.
+libs:    networkx.MultiGraph (already used). numpy for arc-length sum. Reuse existing penstroke.core.graph and penstroke.core.strokes.tangent_at.
+algorithm:
+from penstroke.core.graph import skeleton_to_graph, merge_nearby_junctions, collapse_parallel_edges
+from penstroke.core.strokes import tangent_at
+import numpy as np
+
+def build_annotated_graph(skel, dist_map):
+    G = skeleton_to_graph(skel)
+    G = merge_nearby_junctions(G, max_dist=22)
+    G = collapse_parallel_edges(G, dist_map)
+    for u, v, k, d in G.edges(keys=True, data=True):
+        path = d['path']
+        # arc length
+        arr = np.asarray(path, dtype=float)
+        diffs = np.diff(arr, axis=0)
+        d['length'] = float(np.hypot(diffs[:,0], diffs[:,1]).sum())
+        # tangents (outward, 20-px baseline)
+        d['tan_u'] = tangent_at(path, u, k=20)
+        d['tan_v'] = tangent_at(path, v, k=20)
+        d['retrace'] = False
+    return G
+
+=== STEP 2: 2. Split into connected components and detect orphaned closed loops ===
+inputs:  G_skel, skel.
+outputs: List[ComponentSpec] plus separately-collected closed_loop_strokes (list of Walks) from skeleton pixels not represented in G_skel.
+libs:    networkx.connected_components, networkx.MultiGraph.subgraph. Reuse penstroke.core.strokes.trace_closed_loops for orphan loops.
+algorithm:
+import networkx as nx
+from penstroke.core.strokes import trace_closed_loops
+
+def split_components(G_skel, skel):
+    components = []
+    for nodes in nx.connected_components(G_skel):
+        Gc = G_skel.subgraph(nodes).copy()
+        if Gc.number_of_edges() == 0:
+            continue  # isolated node, emit as dot later if needed
+        odd = [n for n in Gc.nodes if Gc.degree(n) % 2 == 1]
+        betti = Gc.number_of_edges() - Gc.number_of_nodes() + 1
+        ys = [n[0] for n in Gc.nodes]; xs = [n[1] for n in Gc.nodes]
+        total_len = sum(d['length'] for _,_,d in Gc.edges(data=True))
+        spec = ComponentSpec(subgraph=Gc, odd_vertices=odd, betti=betti,
+                             topology_class=classify(odd, betti, Gc),
+                             bbox=(min(ys), min(xs), max(ys), max(xs)),
+                             total_length=total_len)
+        components.append(spec)
+    # Orphaned closed loops (no special pixels) — 'o', 'O', counter of 'D'
+    orphan_loops = trace_closed_loops(skel)
+    return components, orphan_loops
+
+def classify(odd, betti, Gc):
+    if not odd and betti == 1: return 'CLOSED_LOOP'
+    if not odd and betti >= 2: return 'MULTI_LOOP'
+    if len(odd) == 2 and betti == 0: return 'OPEN_LINE'
+    if len(odd) == 2 and betti >= 1: return 'LINE_WITH_LOOP'
+    if len(odd) >= 4 and betti == 0: return 'TREE'
+    return 'MIXED'
+
+=== STEP 3: 3. Per-component T-join: minimum-weight matching over odd vertices ===
+inputs:  ComponentSpec.
+outputs: Augmented multigraph G_aug (component subgraph + duplicated edges along shortest paths between matched odd pairs) and ordered list of remaining odd vertices (matchings of cardinality OPEN_PAIRS that we will use as trail endpoints, length = 2 by default).
+libs:    networkx.min_weight_matching (Blossom V), networkx.shortest_path / shortest_path_length with weight='length' (Dijkstra), itertools.combinations, numpy for Euclidean lift distance.
+algorithm:
+import networkx as nx
+import itertools
+
+# Tuning constants (top of module, named)
+ALPHA_RETRACE = 0.6           # retrace cost coefficient on shortest-path length
+MAX_RETRACE_FRAC = 0.35       # never retrace more than 35% of component length
+LIFT_COST_PX = 150.0          # pen-lift base cost (pixel equivalent)
+
+def tjoin_repair(spec):
+    Gc = spec.subgraph
+    odd = list(spec.odd_vertices)
+    if len(odd) <= 2:
+        # Already Eulerian (0 odd) or already a trail-ready (2 odd) graph.
+        return Gc.copy(), odd
+    # Build complete graph K over odd vertices; edge weight = min cost between
+    # retrace (ALPHA*shortest_path) and lift+euclid.
+    K = nx.Graph()
+    sp_cache = {}
+    for a, b in itertools.combinations(odd, 2):
+        d_sp = nx.shortest_path_length(Gc, a, b, weight='length')
+        path = nx.shortest_path(Gc, a, b, weight='length')
+        sp_cache[(a,b)] = (d_sp, path)
+        retrace_cost = ALPHA_RETRACE * d_sp if d_sp <= MAX_RETRACE_FRAC * spec.total_length else float('inf')
+        lift_cost    = LIFT_COST_PX + float(np.hypot(a[0]-b[0], a[1]-b[1]))
+        K.add_edge(a, b, weight=min(retrace_cost, lift_cost),
+                   kind=('retrace' if retrace_cost <= lift_cost else 'lift'))
+    matching = nx.min_weight_matching(K)
+    # Partition matching into retrace (duplicate in G_aug) vs lift (keep both odd; produce 2 trails)
+    G_aug = Gc.copy()
+    keep_odd = []  # odd vertices that will become trail start/end points
+    for (a, b) in matching:
+     
+
+=== STEP 4: 4. Hierholzer with tangent-continuity tie-breaking ===
+inputs:  G_aug (Eulerian after T-join), keep_odd (list of 0 or 2 designated trail endpoints).
+outputs: node_trail: ordered list of (node, in_edge_key) tuples where Hierholzer consumed each edge. If keep_odd == [] returns a closed circuit; if len(keep_odd) == 2 returns an open trail from keep_odd[0] to keep_odd[1].
+libs:    Pure numpy + dict operations. No reliance on nx.eulerian_circuit because we need custom edge selection — but nx.eulerian_circuit's signature (graph, source, keys=True) is the validation reference.
+algorithm:
+import numpy as np
+
+def _angle(t_in, t_out_outward):
+    # t_in is tangent ARRIVING at node (pointing toward node).
+    # t_out_outward is tangent LEAVING node (pointing away from node, as stored).
+    # Straight-through means t_in and t_out_outward point in the SAME direction:
+    #   dot(t_in, t_out_outward) close to +1 -> straight.
+    #   dot close to -1 -> U-turn.
+    d = float(np.clip(np.dot(t_in, t_out_outward), -1.0, 1.0))
+    return np.arccos(d)  # 0 = straight, pi = u-turn
+
+def hierholzer_continuity(G_aug, start, end=None):
+    used = set()                # canonical (min(u,v), max(u,v), k)
+    def canon(u, v, k):
+        return (u, v, k) if u <= v else (v, u, k)
+    # Standard nested-stack Hierholzer, modified to pick the locally most-straight
+    # outgoing edge.
+    stack = [(start, None)]     # (node, last_outward_tangent_into_node)
+    trail = []
+    while stack:
+        v, t_arrive = stack[-1]
+        cands = []
+        for nb, k, ed in [(nb, k, G_aug[v][nb][k]) for nb in G_aug.neighbors(v) for k in G_aug[v][nb]]:
+            if canon(v, nb, k) in used: continue
+            t_out = ed['tan_u'] if ed['path'][0] == v else ed['tan_v']
+            cands.append((nb, k, t_out, ed))
+        if not cands:
+            node, _ = stack.pop()
+            trail.append(node)
+            continue
+        # Score: lower is better.
+        # primary: turn angle (straight through preferred)
+        # secondary: prefer non-retrace edges
+        # tertiary: prefer longer edges (s
+
+=== STEP 5: 5. Sharp-turn splitting (kinematic cut) ===
+inputs:  node_trail from Hierholzer, G_aug, SHARP_TURN_DEG (default 95).
+outputs: list[Walk]: each Walk is a list of (y, x) pixel coords ready for smoothing.
+libs:    math.radians/acos, numpy (for clip + tangent dot), reuse penstroke.core.strokes.tangent_at for consistent tangent baseline.
+algorithm:
+import math, numpy as np
+from penstroke.core.strokes import tangent_at
+SHARP_TURN = math.radians(95)
+MIN_WALK_LEN_PX = 6.0
+
+def trail_to_pixels_and_split(node_trail, G_aug):
+    # Step A: reconstruct the ordered list of edges consumed, with their oriented pixel paths.
+    consumed = []                       # list of dicts: {'u','v','key','path_oriented','length'}
+    used_keys = {}                      # multiset counter per (u,v): which keys consumed
+    for u, v in zip(node_trail[:-1], node_trail[1:]):
+        # Pop the next-unused multiedge key between u and v.
+        # (We can rebuild this map from a single pass; cf. step 4's used set.)
+        candidates = sorted(G_aug[u][v].keys())
+        used_keys.setdefault((u,v), 0); used_keys.setdefault((v,u), 0)
+        idx = used_keys[(u,v)] + used_keys[(v,u)]
+        k = candidates[idx % len(candidates)]
+        used_keys[(u,v)] += 1
+        path = G_aug[u][v][k]['path']
+        if tuple(path[0]) != u: path = path[::-1]
+        consumed.append({'u':u, 'v':v, 'key':k, 'path':path, 'length':G_aug[u][v][k]['length']})
+    # Step B: walk through `consumed`, accumulating pixels. At each transition
+    # u->v->w, evaluate the turn angle at v. If > SHARP_TURN and v is a junction,
+    # cut: emit the accumulated walk and start a new one at v.
+    walks = []
+    current = list(consumed[0]['path'])
+    for i in range(1, len(consumed)):
+        prev_e = consumed[i-1]
+        next_e = consumed[i]
+        v = prev_e['v']                   
+
+=== STEP 6: 6. Closed-component handling (CLOSED_LOOP and MULTI_LOOP) ===
+inputs:  ComponentSpec where odd_vertices == [], or orphan_loops from step 2.
+outputs: list[Walk] with closed walks rotated to start at topmost vertex and oriented clockwise.
+libs:    numpy.argmin, numpy.sum for shoelace, reuse trace_closed_loops for orphan-loop pixel walks.
+algorithm:
+import numpy as np
+
+def handle_closed_component(spec):
+    Gc = spec.subgraph
+    if Gc.number_of_nodes() == 0:
+        return []
+    # Pick deterministic start: topmost (min y) then leftmost (min x).
+    start = min(Gc.nodes, key=lambda n: (n[0], n[1]))
+    G_aug = Gc.copy()
+    trail = hierholzer_continuity(G_aug, start)
+    walks = trail_to_pixels_and_split(trail, G_aug)
+    # If no sharp turn fired and we have one closed walk, ensure clockwise orientation.
+    walks = [orient_clockwise_if_closed(w) for w in walks]
+    return walks
+
+def orient_clockwise_if_closed(walk):
+    if walk[0] != walk[-1]:
+        return walk
+    arr = np.asarray(walk, dtype=float)
+    # Shoelace in image coords (y goes DOWN): positive = clockwise visually.
+    x = arr[:,1]; y = arr[:,0]
+    area2 = float(np.sum(x[:-1]*y[1:] - x[1:]*y[:-1]))
+    if area2 < 0:           # counter-clockwise in image coords
+        walk = walk[::-1]
+    # Rotate so topmost pixel of the closed walk is first.
+    top_idx = int(np.argmin([p[0] for p in walk[:-1]]))
+    walk = walk[top_idx:-1] + walk[:top_idx] + [walk[top_idx]]
+    return walk
+
+def handle_orphan_loop(pixel_list):
+    # Already comes from trace_closed_loops which rotates+orients; just pass through.
+    return pixel_list
+
+=== STEP 7: 7. Open-component handling (everything else) ===
+inputs:  ComponentSpec where odd_vertices is non-empty.
+outputs: list[Walk] for this component.
+libs:    Same as previous steps plus optional handshake-counting helper.
+algorithm:
+def handle_open_component(spec):
+    G_aug, keep_odd = tjoin_repair(spec)
+    if len(keep_odd) == 2:
+        start, end = pick_trail_endpoints(keep_odd, spec)
+        trail = hierholzer_continuity(G_aug, start, end=end)
+        return trail_to_pixels_and_split(trail, G_aug)
+    elif len(keep_odd) == 0:
+        # All matched as retrace -> single closed circuit
+        start = min(G_aug.nodes, key=lambda n: (n[0], n[1]))
+        trail = hierholzer_continuity(G_aug, start)
+        return trail_to_pixels_and_split(trail, G_aug)
+    else:
+        # Multiple lift pairs -> multiple open trails. Ghost-edge trick.
+        pairs = pair_keep_odd_for_ghosts(keep_odd, G_aug)
+        ghost_keys = []
+        for (a, b) in pairs[1:]:
+            kk = G_aug.add_edge(a, b, path=[a, b], length=0.0,
+                                tan_u=np.zeros(2), tan_v=np.zeros(2),
+                                retrace=False, ghost=True)
+            ghost_keys.append((a, b, kk))
+        start, end = pairs[0]
+        trail = hierholzer_continuity(G_aug, start, end=end)
+        # Split trail at ghost edges and split each piece at sharp turns.
+        sub_trails = split_at_ghosts(trail, ghost_keys)
+        walks = []
+        for st in sub_trails:
+            walks.extend(trail_to_pixels_and_split(st, G_aug))
+        return walks
+
+def pick_trail_endpoints(keep_odd, spec):
+    # Deterministic: start at topmost-leftmost vertex of keep_odd; end at the other.
+    keep_odd_sorted = sorted(keep_odd, key=lambda n: (n[
+
+=== STEP 8: 8. Inter-component ordering and final orientation ===
+inputs:  list of (component_id, walks) from all components + orphan_loops.
+outputs: Flat ordered list[Walk] in handwriting order.
+libs:    numpy.median, numpy.asarray; reuse penstroke.core.strokes.order_strokes orientation rule (verticals top->bottom, horizontals left->right).
+algorithm:
+import numpy as np
+
+def order_all_walks(components_walks, orphan_loop_walks, all_specs):
+    # Build (walk, source_component_bbox, source_total_length).
+    entries = []
+    for spec, walks in zip(all_specs, components_walks):
+        for w in walks:
+            entries.append((w, spec.bbox, spec.total_length))
+    for w in orphan_loop_walks:
+        arr = np.asarray(w)
+        bbox = (int(arr[:,0].min()), int(arr[:,1].min()), int(arr[:,0].max()), int(arr[:,1].max()))
+        total_len = polyline_length(w)
+        entries.append((w, bbox, total_len))
+    # Determine 'main body' size: the median component total length.
+    main_size = float(np.median([t for (_, _, t) in entries])) if entries else 0.0
+    SMALL_FRAC = 0.30
+    def sort_key(entry):
+        w, bbox, tot = entry
+        ymin, xmin, ymax, xmax = bbox
+        # Tiny floating component (i/j dot, punctuation tittle) -> push to end.
+        is_tiny = (tot < SMALL_FRAC * main_size)
+        # Band by y in 60px bins (canvas-relative).
+        band = ymin // 60
+        # Within band: verticals before horizontals.
+        warr = np.asarray(w)
+        wymin, wymax = warr[:,0].min(), warr[:,0].max()
+        wxmin, wxmax = warr[:,1].min(), warr[:,1].max()
+        is_vertical = 1 if (wymax - wymin) > 1.2 * (wxmax - wxmin) else 0
+        return (1 if is_tiny else 0, band, -is_vertical, warr[:,1].min(), warr[:,0].min())
+    entries.sort(key=sort_key)
+    # Final per-walk orientation: open walks already oriented by Hierholzer star
+
+=== STEP 9: 9. Top-level entry point ===
+inputs:  skel, dist_map (already produced by core.skeleton.skeletonize_with_widths in the existing pipeline).
+outputs: List[Walk] ready for core.smoothing.spline_fit -> ribbon rendering -> SVG.
+libs:    Composition step only; all primitives already imported.
+algorithm:
+def trace_glyph_eulerian(skel, dist_map):
+    G = build_annotated_graph(skel, dist_map)
+    specs, orphan_loops = split_components(G, skel)
+    components_walks = []
+    for spec in specs:
+        if spec.topology_class in ('CLOSED_LOOP', 'MULTI_LOOP'):
+            components_walks.append(handle_closed_component(spec))
+        else:
+            components_walks.append(handle_open_component(spec))
+    ordered = order_all_walks(components_walks, orphan_loops, specs)
+    # Drop walks shorter than the minimum stroke length (skeleton noise).
+    return [w for w in ordered if polyline_length(w) >= MIN_WALK_LEN_PX]
+
