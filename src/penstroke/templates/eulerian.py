@@ -248,18 +248,26 @@ def hierholzer_continuity(G_aug, start):
     """Iterative Hierholzer that picks the locally most-straight outgoing
     edge at each step (tangent-continuity tie-breaking).
 
-    Returns a list of nodes forming an Eulerian trail starting at `start`.
-    Requires G_aug to be Eulerian (every node even-degree) or to have
-    exactly one node of odd degree to start from.
+    Returns a list of (u, v, k) edge triples in the order they were
+    traversed. Each triple records the exact multigraph key — downstream
+    code must use these keys directly rather than guessing keys from a
+    node trail, otherwise ghost / retrace duplicate edges produce wrong
+    paths.
     """
     def canon(u, v, k):
         return (u, v, k) if u <= v else (v, u, k)
 
     used = set()
-    stack = [(start, None)]   # (node, direction we ARRIVED moving in)
-    trail = []
+    # Stack entries: (node, t_arrive, incoming_edge_to_node_or_None)
+    stack = [(start, None, None)]
+    # We build the Hierholzer trail of EDGES via the standard recursive
+    # algorithm. The node trail can be recovered from the edges.
+    edge_trail = []
+    # Track the "current sub-circuit" of edges
+    sub_circuit_edges = []   # edges popped off in order
+
     while stack:
-        v, t_arrive = stack[-1]
+        v, t_arrive, in_edge = stack[-1]
         # Collect unused outgoing edges at v.
         cands = []
         for nb in G_aug.neighbors(v):
@@ -267,20 +275,18 @@ def hierholzer_continuity(G_aug, start):
                 if canon(v, nb, k) in used:
                     continue
                 ed = G_aug[v][nb][k]
-                # tan_u is the outward tangent at the path's u endpoint;
-                # path[0] == u. Pick the right one for our v side.
                 if tuple(ed['path'][0]) == v:
                     t_out = ed['tan_u']
                 else:
                     t_out = ed['tan_v']
                 cands.append((nb, k, t_out, ed))
         if not cands:
-            node, _ = stack.pop()
-            trail.append(node)
+            # Backtrack: pop this node and record its incoming edge.
+            _, _, in_e = stack.pop()
+            if in_e is not None:
+                sub_circuit_edges.append(in_e)
             continue
         if t_arrive is None:
-            # First step at start vertex — bias downward then leftward
-            # so Latin letters open with a downstroke.
             cands.sort(key=lambda c: (-c[2][0], c[2][1]))
         else:
             cands.sort(key=lambda c: (
@@ -290,12 +296,13 @@ def hierholzer_continuity(G_aug, start):
             ))
         nb, k, t_out, ed = cands[0]
         used.add(canon(v, nb, k))
-        # Arriving tangent at nb = direction of motion = t_out (we left v
-        # moving in direction t_out; arriving at nb moving in the same
-        # direction of motion, i.e. continuing the same vector).
-        stack.append((nb, t_out))
-    trail.reverse()
-    return trail
+        # Push the next node with the edge we used to reach it.
+        stack.append((nb, t_out, (v, nb, k)))
+
+    # sub_circuit_edges is in reverse traversal order (Hierholzer's
+    # standard property). Reverse it to get forward order.
+    sub_circuit_edges.reverse()
+    return sub_circuit_edges
 
 
 # ---------------------------------------------------------------------------
@@ -309,44 +316,60 @@ def _polyline_length(pixels):
     return float(np.hypot(np.diff(arr[:, 0]), np.diff(arr[:, 1])).sum())
 
 
-def trail_to_walks(node_trail, G_aug):
-    """Convert an Eulerian node-trail into a list of pixel walks, splitting
-    at sharp-turn junctions where a human writer would lift the pen."""
-    if len(node_trail) < 2:
+def edges_to_walks(edge_trail, G_aug):
+    """Convert an ordered list of (u, v, k) edge triples into pixel walks,
+    splitting at sharp-turn junctions where a human writer would lift.
+
+    Ghost edges (path=[a,b] zero-length straight-line connectors added
+    by _handle_multi_trail) are recognised by the 'ghost' flag and
+    always start a new walk — they're never themselves rendered.
+    """
+    if not edge_trail:
         return []
 
-    # Reconstruct ordered edge consumption, tracking multi-edge keys.
-    used_per_pair = {}
+    # Hydrate each (u, v, k) into an oriented pixel polyline.
     consumed = []
-    for u, v in zip(node_trail[:-1], node_trail[1:]):
-        keys = sorted(G_aug[u][v].keys())
-        idx = used_per_pair.get(frozenset((u, v)), 0)
-        k = keys[idx % len(keys)]
-        used_per_pair[frozenset((u, v))] = idx + 1
-        path = list(G_aug[u][v][k]['path'])
+    for (u, v, k) in edge_trail:
+        ed = G_aug[u][v][k]
+        path = list(ed['path'])
         if tuple(path[0]) != u:
             path = path[::-1]
-        consumed.append({'u': u, 'v': v, 'k': k, 'path': path})
+        consumed.append({
+            'u': u, 'v': v, 'k': k,
+            'path': path,
+            'ghost': bool(ed.get('ghost', False)),
+        })
 
     sharp_threshold = math.radians(SHARP_TURN_DEG)
     walks = []
-    current = list(consumed[0]['path'])
-    for i in range(1, len(consumed)):
+    current = []
+    for i, e in enumerate(consumed):
+        if e['ghost']:
+            # Ghost edge — flush current walk, do not draw the ghost.
+            if _polyline_length(current) >= MIN_WALK_LEN_PX:
+                walks.append(current)
+            current = []
+            continue
+        if not current:
+            current = list(e['path'])
+            continue
         prev_e = consumed[i - 1]
-        next_e = consumed[i]
+        # If the previous edge was a ghost we already restarted; treat as
+        # a fresh continuation.
+        if prev_e['ghost']:
+            current = list(e['path'])
+            continue
         v = prev_e['v']
-        # tangent of motion entering v = -tangent_at(prev_path, v) since
-        # tangent_at returns the AWAY-from-node direction.
         t_in_arrive = -tangent_at(prev_e['path'], v, k=20)
-        t_out_leave = tangent_at(next_e['path'], v, k=20)
+        t_out_leave = tangent_at(e['path'], v, k=20)
         theta = _turn_angle(t_in_arrive, t_out_leave)
         is_junction = (G_aug.degree(v) >= 3)
         if is_junction and theta >= sharp_threshold:
             if _polyline_length(current) >= MIN_WALK_LEN_PX:
                 walks.append(current)
-            current = list(next_e['path'])
+            current = list(e['path'])
         else:
-            current.extend(next_e['path'][1:])
+            current.extend(e['path'][1:])
     if _polyline_length(current) >= MIN_WALK_LEN_PX:
         walks.append(current)
     return walks
@@ -377,8 +400,8 @@ def handle_closed_component(spec):
     if Gc.number_of_nodes() == 0:
         return []
     start = min(Gc.nodes, key=lambda n: (n[0], n[1]))
-    trail = hierholzer_continuity(Gc.copy(), start)
-    walks = trail_to_walks(trail, Gc)
+    edge_trail = hierholzer_continuity(Gc.copy(), start)
+    walks = edges_to_walks(edge_trail, Gc)
     return [_orient_clockwise_if_closed(w) for w in walks]
 
 
@@ -391,63 +414,35 @@ def handle_open_component(spec):
     if len(keep_odd) == 2:
         keep_odd_sorted = sorted(keep_odd, key=lambda n: (n[0], n[1]))
         start = keep_odd_sorted[0]
-        trail = hierholzer_continuity(G_aug, start)
-        return trail_to_walks(trail, G_aug)
+        edge_trail = hierholzer_continuity(G_aug, start)
+        return edges_to_walks(edge_trail, G_aug)
     elif len(keep_odd) == 0:
-        # Component was fully repaired into an Eulerian circuit. Start at
-        # the topmost-leftmost vertex.
         start = min(G_aug.nodes, key=lambda n: (n[0], n[1]))
-        trail = hierholzer_continuity(G_aug, start)
-        return trail_to_walks(trail, G_aug)
+        edge_trail = hierholzer_continuity(G_aug, start)
+        return edges_to_walks(edge_trail, G_aug)
     else:
-        # Multiple lift pairs. Ghost-edge trick: pair the odd vertices
-        # geometrically and add zero-length "ghost" edges, then run
-        # Hierholzer once and split at ghost edges.
         return _handle_multi_trail(G_aug, keep_odd)
 
 
 def _handle_multi_trail(G_aug, keep_odd):
+    """Multi-trail handler: > 2 odd vertices means we need multiple open
+    trails. Pair the odd vertices geometrically, add zero-length GHOST
+    edges between paired endpoints, then run Hierholzer once over the
+    now-Eulerian graph. The ghost edges have `ghost=True` and a
+    straight-line path; edges_to_walks recognises the flag and
+    flushes the current walk WITHOUT rendering the ghost. Net effect:
+    one Hierholzer pass produces N independent walks where N = lift
+    pairs."""
     sorted_odd = sorted(keep_odd, key=lambda n: (n[0], n[1]))
     pairs = list(zip(sorted_odd[0::2], sorted_odd[1::2]))
-    ghost_keys = []
     for (a, b) in pairs[1:]:
-        kk = G_aug.add_edge(a, b,
-                             path=[a, b], length=0.0,
-                             tan_u=np.zeros(2), tan_v=np.zeros(2),
-                             retrace=False, ghost=True)
-        ghost_keys.append((a, b, kk))
+        G_aug.add_edge(a, b,
+                       path=[a, b], length=0.0,
+                       tan_u=np.zeros(2), tan_v=np.zeros(2),
+                       retrace=False, ghost=True)
     start = pairs[0][0]
-    trail = hierholzer_continuity(G_aug, start)
-    # Split node-trail at ghost edges, then convert each piece to walks.
-    sub_trails = _split_trail_at_ghosts(trail, G_aug, ghost_keys)
-    walks = []
-    for st in sub_trails:
-        walks.extend(trail_to_walks(st, G_aug))
-    return walks
-
-
-def _split_trail_at_ghosts(trail, G_aug, ghost_keys):
-    ghost_set = set()
-    for a, b, k in ghost_keys:
-        ghost_set.add((a, b, k))
-        ghost_set.add((b, a, k))
-    used_per_pair = {}
-    pieces = []
-    current = [trail[0]]
-    for u, v in zip(trail[:-1], trail[1:]):
-        keys = sorted(G_aug[u][v].keys())
-        idx = used_per_pair.get(frozenset((u, v)), 0)
-        k = keys[idx % len(keys)]
-        used_per_pair[frozenset((u, v))] = idx + 1
-        if (u, v, k) in ghost_set:
-            if len(current) >= 2:
-                pieces.append(current)
-            current = [v]
-        else:
-            current.append(v)
-    if len(current) >= 2:
-        pieces.append(current)
-    return pieces
+    edge_trail = hierholzer_continuity(G_aug, start)
+    return edges_to_walks(edge_trail, G_aug)
 
 
 # ---------------------------------------------------------------------------
