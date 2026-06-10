@@ -304,7 +304,7 @@ def render_letter_diagnostic(char, mask, traced, outlines, out_path,
 
 
 def render_all_diagnostics(font_path, traced_per_letter, output_dir,
-                           letters, size=384):
+                           letters, size=384, filename_fn=None):
     """Render diagnostic PNGs for every letter into output_dir/diagnostics/.
 
     Args:
@@ -327,8 +327,11 @@ def render_all_diagnostics(font_path, traced_per_letter, output_dir,
             outlines = extract_outlines(font_path, ch, size=size)
         except Exception:
             outlines = []
-        base = f'cap_{ch}' if ch.isupper() else ch
-        out_path = os.path.join(diag_dir, f'{base}.png')
+        if filename_fn is not None:
+            fname = filename_fn(ch)
+        else:
+            fname = f'cap_{ch}.png' if ch.isupper() else f'{ch}.png'
+        out_path = os.path.join(diag_dir, fname)
         try:
             render_letter_diagnostic(ch, mask, traced, outlines, out_path)
         except Exception:

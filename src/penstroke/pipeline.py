@@ -36,7 +36,11 @@ from penstroke.quality.report import assess_letter, build_report, build_metadata
 from penstroke.quality.glyph_image import write_raw_glyphs
 
 
-_DEFAULT_LETTERS = string.ascii_lowercase + string.ascii_uppercase
+_DEFAULT_LETTERS = (string.ascii_lowercase + string.ascii_uppercase
+                    + '@€$§&?#+*/ÜÖÄ')
+
+# Glyphs per row in the alphabet grid / preview.
+GRID_COLS = 13
 
 
 # Map special characters to filesystem-safe filenames.
@@ -121,7 +125,9 @@ def trace_font(
     #    (see quality/spec.py and the `penstroke spec` CLI). Cheap to do here;
     #    skipped silently if anything errors.
     try:
-        write_raw_glyphs(ttf_path, output_dir, letters)
+        write_raw_glyphs(
+            ttf_path, output_dir, letters,
+            filename_fn=lambda ch: safe_filename(ch).replace('.svg', '.png'))
     except Exception:
         pass
 
@@ -188,10 +194,12 @@ def trace_font(
 
     # 3. Alphabet grid SVGs
     if grid_items:
-        anim_svg, _dur = build_alphabet_svg(grid_items, animate=True)
+        anim_svg, _dur = build_alphabet_svg(grid_items, cols=GRID_COLS,
+                                            animate=True)
         with open(os.path.join(output_dir, 'alphabet_animated.svg'), 'w', encoding='utf-8') as f:
             f.write(anim_svg)
-        static_svg, _ = build_alphabet_svg(grid_items, animate=False)
+        static_svg, _ = build_alphabet_svg(grid_items, cols=GRID_COLS,
+                                           animate=False)
         with open(os.path.join(output_dir, 'alphabet_static.svg'), 'w', encoding='utf-8') as f:
             f.write(static_svg)
 
@@ -202,8 +210,9 @@ def trace_font(
     # 3b. Per-letter diagnostic PNGs (colored strokes, numbered starts)
     try:
         from penstroke.render.diagnostic import render_all_diagnostics
-        render_all_diagnostics(ttf_path, traced_per_letter, output_dir,
-                               letters, size=size)
+        render_all_diagnostics(
+            ttf_path, traced_per_letter, output_dir, letters, size=size,
+            filename_fn=lambda ch: safe_filename(ch).replace('.svg', '.png'))
     except Exception:
         pass
 
