@@ -1,44 +1,40 @@
-"""Eulerian Pen-Stroke Tracer (EPST).
+"""EPST — the junction-first graph tracer (penstroke's default).
 
-Graph-theoretic replacement for the Hershey-template-driven tracer in
-templates/trace.py. The skeleton of a glyph IS its decomposition prior —
-we don't need an external font to tell us how many strokes; the topology
-already does.
+The skeleton of a glyph IS its stroke-decomposition prior — no external
+stroke font needed; the topology already encodes how many strokes there
+are and where they run.
 
-Algorithm (designed via multi-lens workflow; see design/graph_tracer_spec.json):
+Pipeline per glyph:
 
-  1. Build cleaned skeleton multigraph, annotate each edge with arc
-     length and per-end tangent vectors.
-  2. Split into connected components. Pure closed-loop components ('o',
-     'O', the counter of 'D') are picked up separately via
-     trace_closed_loops on the raster skeleton.
-  3. Per component: minimum-weight T-join to repair parity (Chinese
-     Postman). Picks min-cost pairing of odd-degree vertices, deciding
-     for each pair whether to RETRACE the shortest path (duplicate
-     edges) or LIFT (keep both as trail endpoints).
-  4. Hierholzer with tangent-continuity tie-breaking: at each junction,
-     prefer the outgoing edge whose tangent most closely continues the
-     incoming tangent. This naturally keeps stems straight through
-     X-junctions and Y-junctions instead of veering off into a serif.
-  5. Sharp-turn split: cut the Hierholzer trail at junctions where the
-     turn angle is ≥ SHARP_TURN_DEG (95° default). This is where a
-     human writer would naturally lift the pen — at right-angle
-     corners like the t crossbar joining the stem.
-  6. Closed/multi-loop component handling: rotate to start at topmost
-     vertex, force clockwise orientation.
-  7. Open-component handling: T-join repair → Hierholzer → split.
-  8. Inter-component ordering: large body first, dots/tittles last;
-     within bands, top-to-bottom, verticals before horizontals.
+  1. Rasterize + skeletonize (deterministic medial axis), pull out
+     dot-like disconnected components (i/j tittles, accents) as
+     tap-strokes.
+  2. Build the cleaned skeleton multigraph: junction merging, parallel-
+     edge collapse, scrambled-path repair, duplicate-edge removal. Each
+     edge carries its pixel path, arc length, and end tangents.
+  3. JUNCTION ANALYSIS (the heart): at every node, examine all incident
+     edge-ends together and choose the optimal pairing — two ends pair
+     when the pen can continue from one into the other without turning
+     more than MAX_CONTINUATION_TURN_DEG. Ends left unpaired are stroke
+     terminals. All junctions are decided globally BEFORE any walking,
+     so no decision ever depends on traversal order.
+  4. CHAIN BUILDING: follow the pairings mechanically. Every edge lands
+     in exactly one chain; chains run terminal-to-terminal or close
+     into loops. Each chain is one natural pen stroke.
+  5. Orientation + ordering: closed loops start at their topmost pixel
+     and run clockwise; open strokes run top-to-bottom / left-to-right;
+     strokes are emitted big-first with dots/tittles last.
+  6. Smoothing: each chain goes through core.smoothing.smooth_and_wobble
+     for spline fit, per-point widths from the distance transform, and
+     the hand-drawn wobble.
 
-Per-walk widths are sampled downstream from the distance transform via
-core.smoothing.smooth_and_wobble — same as the existing tracer. EPST's
-output (one (xs, ys, widths) per walk) is drop-in compatible.
+Output is a list of (xs, ys, widths) strokes — drop-in compatible with
+the legacy Hershey tracer's output.
 """
 
 import math
-import itertools
-from dataclasses import dataclass, field
-from typing import Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Tuple
 
 import numpy as np
 import networkx as nx
@@ -56,15 +52,8 @@ from penstroke.core.smoothing import smooth_and_wobble
 # Tuning constants (the only knobs the algorithm exposes).
 # ---------------------------------------------------------------------------
 
-SHARP_TURN_DEG = 95.0          # >= this turn at a junction triggers a pen-lift
 MIN_WALK_LEN_PX = 6.0           # drop walks shorter than this (skeleton noise)
 MIN_COMPONENT_LEN_PX = 4.0      # drop components shorter than this entirely
-
-# T-join cost parameters: balance retrace vs lift when there are > 2 odd vertices.
-ALPHA_RETRACE = 0.6             # cost coefficient on retrace path length
-MAX_RETRACE_FRAC = 0.35         # never retrace more than this fraction of component
-LIFT_COST_PX = 150.0            # base cost for a pen lift (encourages retrace
-                                # when it's short, lift when it's far)
 
 # Inter-component ordering: tiny components below this fraction of the median
 # component length are dots/tittles and get pushed to the end of the order.
@@ -447,147 +436,7 @@ def build_chains(G, pairing):
 
 
 # ---------------------------------------------------------------------------
-# Step 3: T-join parity repair
-# ---------------------------------------------------------------------------
-
-def tjoin_repair(spec):
-    """Reduce odd-degree count to leave 0 or 2 trail endpoints per component.
-
-    Returns (G_aug, keep_odd):
-      G_aug: copy of spec.subgraph with some edges duplicated to balance parity
-      keep_odd: subset of original odd vertices that will remain as trail
-        start/end points (the "lift" pairs); empty list means the component
-        is now Eulerian (closed circuit).
-    """
-    Gc = spec.subgraph
-    odd = sorted(spec.odd_vertices)
-    if len(odd) <= 2:
-        return Gc.copy(), odd
-
-    # Build complete graph K over odd vertices. Each edge weight =
-    # min(retrace_cost, lift_cost). Retrace = duplicate the shortest path
-    # between the two odd vertices (paying ALPHA × path length). Lift =
-    # leave both as trail endpoints (paying LIFT_COST + euclid distance).
-    K = nx.Graph()
-    sp_cache = {}
-    for a, b in itertools.combinations(odd, 2):
-        try:
-            d_sp = nx.shortest_path_length(Gc, a, b, weight='length')
-            path = nx.shortest_path(Gc, a, b, weight='length')
-        except (nx.NetworkXNoPath, nx.NodeNotFound):
-            d_sp, path = float('inf'), None
-        sp_cache[(a, b)] = (d_sp, path)
-        retrace_cost = (ALPHA_RETRACE * d_sp
-                        if d_sp <= MAX_RETRACE_FRAC * spec.total_length
-                        else float('inf'))
-        lift_cost = LIFT_COST_PX + float(np.hypot(a[0] - b[0], a[1] - b[1]))
-        cost = min(retrace_cost, lift_cost)
-        K.add_edge(a, b, weight=cost,
-                   kind=('retrace' if retrace_cost <= lift_cost else 'lift'))
-
-    # Min-weight perfect matching (Blossom).
-    matching = nx.min_weight_matching(K)
-
-    G_aug = Gc.copy()
-    keep_odd = []
-    for (a, b) in matching:
-        if K[a][b]['kind'] == 'retrace':
-            d_sp, path = sp_cache.get((a, b), sp_cache.get((b, a), (None, None)))
-            if path is None:
-                keep_odd.extend([a, b])
-                continue
-            for u, v in zip(path[:-1], path[1:]):
-                # Duplicate the shortest-existing edge between u and v.
-                k0 = min(Gc[u][v], key=lambda kk: Gc[u][v][kk]['length'])
-                src = Gc[u][v][k0]
-                G_aug.add_edge(u, v,
-                               path=list(src['path']),
-                               length=src['length'],
-                               tan_u=src['tan_u'],
-                               tan_v=src['tan_v'],
-                               retrace=True)
-        else:
-            keep_odd.extend([a, b])
-    return G_aug, keep_odd
-
-
-# ---------------------------------------------------------------------------
-# Step 4: Hierholzer with tangent continuity
-# ---------------------------------------------------------------------------
-
-def _turn_angle(t_arrive, t_leave):
-    """Angle in radians between the direction we arrived in (t_arrive,
-    pointing INTO the node) and the direction we'd leave in (t_leave,
-    pointing AWAY from the node). 0 = straight through; pi = U-turn."""
-    if t_arrive is None or t_leave is None:
-        return math.pi
-    d = float(np.clip(np.dot(t_arrive, t_leave), -1.0, 1.0))
-    return math.acos(d)
-
-
-def hierholzer_continuity(G_aug, start):
-    """Iterative Hierholzer that picks the locally most-straight outgoing
-    edge at each step (tangent-continuity tie-breaking).
-
-    Returns a list of (u, v, k) edge triples in the order they were
-    traversed. Each triple records the exact multigraph key — downstream
-    code must use these keys directly rather than guessing keys from a
-    node trail, otherwise ghost / retrace duplicate edges produce wrong
-    paths.
-    """
-    def canon(u, v, k):
-        return (u, v, k) if u <= v else (v, u, k)
-
-    used = set()
-    # Stack entries: (node, t_arrive, incoming_edge_to_node_or_None)
-    stack = [(start, None, None)]
-    # We build the Hierholzer trail of EDGES via the standard recursive
-    # algorithm. The node trail can be recovered from the edges.
-    edge_trail = []
-    # Track the "current sub-circuit" of edges
-    sub_circuit_edges = []   # edges popped off in order
-
-    while stack:
-        v, t_arrive, in_edge = stack[-1]
-        # Collect unused outgoing edges at v.
-        cands = []
-        for nb in G_aug.neighbors(v):
-            for k in G_aug[v][nb]:
-                if canon(v, nb, k) in used:
-                    continue
-                ed = G_aug[v][nb][k]
-                if tuple(ed['path'][0]) == v:
-                    t_out = ed['tan_u']
-                else:
-                    t_out = ed['tan_v']
-                cands.append((nb, k, t_out, ed))
-        if not cands:
-            # Backtrack: pop this node and record its incoming edge.
-            _, _, in_e = stack.pop()
-            if in_e is not None:
-                sub_circuit_edges.append(in_e)
-            continue
-        if t_arrive is None:
-            cands.sort(key=lambda c: (-c[2][0], c[2][1]))
-        else:
-            cands.sort(key=lambda c: (
-                _turn_angle(t_arrive, c[2]),
-                1 if c[3].get('retrace', False) else 0,
-                -c[3]['length'],
-            ))
-        nb, k, t_out, ed = cands[0]
-        used.add(canon(v, nb, k))
-        # Push the next node with the edge we used to reach it.
-        stack.append((nb, t_out, (v, nb, k)))
-
-    # sub_circuit_edges is in reverse traversal order (Hierholzer's
-    # standard property). Reverse it to get forward order.
-    sub_circuit_edges.reverse()
-    return sub_circuit_edges
-
-
-# ---------------------------------------------------------------------------
-# Step 5: sharp-turn split + node-trail to pixel walks
+# Walk utilities
 # ---------------------------------------------------------------------------
 
 def _polyline_length(pixels):
@@ -596,69 +445,6 @@ def _polyline_length(pixels):
     arr = np.asarray(pixels, dtype=float)
     return float(np.hypot(np.diff(arr[:, 0]), np.diff(arr[:, 1])).sum())
 
-
-def edges_to_walks(edge_trail, G_aug):
-    """Convert an ordered list of (u, v, k) edge triples into pixel walks,
-    splitting at sharp-turn junctions where a human writer would lift.
-
-    Ghost edges (path=[a,b] zero-length straight-line connectors added
-    by _handle_multi_trail) are recognised by the 'ghost' flag and
-    always start a new walk — they're never themselves rendered.
-    """
-    if not edge_trail:
-        return []
-
-    # Hydrate each (u, v, k) into an oriented pixel polyline.
-    consumed = []
-    for (u, v, k) in edge_trail:
-        ed = G_aug[u][v][k]
-        path = list(ed['path'])
-        if tuple(path[0]) != u:
-            path = path[::-1]
-        consumed.append({
-            'u': u, 'v': v, 'k': k,
-            'path': path,
-            'ghost': bool(ed.get('ghost', False)),
-        })
-
-    sharp_threshold = math.radians(SHARP_TURN_DEG)
-    walks = []
-    current = []
-    for i, e in enumerate(consumed):
-        if e['ghost']:
-            # Ghost edge — flush current walk, do not draw the ghost.
-            if _polyline_length(current) >= MIN_WALK_LEN_PX:
-                walks.append(current)
-            current = []
-            continue
-        if not current:
-            current = list(e['path'])
-            continue
-        prev_e = consumed[i - 1]
-        # If the previous edge was a ghost we already restarted; treat as
-        # a fresh continuation.
-        if prev_e['ghost']:
-            current = list(e['path'])
-            continue
-        v = prev_e['v']
-        t_in_arrive = -tangent_at(prev_e['path'], v, k=20)
-        t_out_leave = tangent_at(e['path'], v, k=20)
-        theta = _turn_angle(t_in_arrive, t_out_leave)
-        is_junction = (G_aug.degree(v) >= 3)
-        if is_junction and theta >= sharp_threshold:
-            if _polyline_length(current) >= MIN_WALK_LEN_PX:
-                walks.append(current)
-            current = list(e['path'])
-        else:
-            current.extend(e['path'][1:])
-    if _polyline_length(current) >= MIN_WALK_LEN_PX:
-        walks.append(current)
-    return walks
-
-
-# ---------------------------------------------------------------------------
-# Step 6: closed-component handling
-# ---------------------------------------------------------------------------
 
 def _orient_clockwise_if_closed(walk):
     """For a closed walk, ensure clockwise orientation (positive shoelace in
@@ -676,58 +462,8 @@ def _orient_clockwise_if_closed(walk):
     return walk
 
 
-def handle_closed_component(spec):
-    Gc = spec.subgraph
-    if Gc.number_of_nodes() == 0:
-        return []
-    start = min(Gc.nodes, key=lambda n: (n[0], n[1]))
-    edge_trail = hierholzer_continuity(Gc.copy(), start)
-    walks = edges_to_walks(edge_trail, Gc)
-    return [_orient_clockwise_if_closed(w) for w in walks]
-
-
 # ---------------------------------------------------------------------------
-# Step 7: open-component handling
-# ---------------------------------------------------------------------------
-
-def handle_open_component(spec):
-    G_aug, keep_odd = tjoin_repair(spec)
-    if len(keep_odd) == 2:
-        keep_odd_sorted = sorted(keep_odd, key=lambda n: (n[0], n[1]))
-        start = keep_odd_sorted[0]
-        edge_trail = hierholzer_continuity(G_aug, start)
-        return edges_to_walks(edge_trail, G_aug)
-    elif len(keep_odd) == 0:
-        start = min(G_aug.nodes, key=lambda n: (n[0], n[1]))
-        edge_trail = hierholzer_continuity(G_aug, start)
-        return edges_to_walks(edge_trail, G_aug)
-    else:
-        return _handle_multi_trail(G_aug, keep_odd)
-
-
-def _handle_multi_trail(G_aug, keep_odd):
-    """Multi-trail handler: > 2 odd vertices means we need multiple open
-    trails. Pair the odd vertices geometrically, add zero-length GHOST
-    edges between paired endpoints, then run Hierholzer once over the
-    now-Eulerian graph. The ghost edges have `ghost=True` and a
-    straight-line path; edges_to_walks recognises the flag and
-    flushes the current walk WITHOUT rendering the ghost. Net effect:
-    one Hierholzer pass produces N independent walks where N = lift
-    pairs."""
-    sorted_odd = sorted(keep_odd, key=lambda n: (n[0], n[1]))
-    pairs = list(zip(sorted_odd[0::2], sorted_odd[1::2]))
-    for (a, b) in pairs[1:]:
-        G_aug.add_edge(a, b,
-                       path=[a, b], length=0.0,
-                       tan_u=np.zeros(2), tan_v=np.zeros(2),
-                       retrace=False, ghost=True)
-    start = pairs[0][0]
-    edge_trail = hierholzer_continuity(G_aug, start)
-    return edges_to_walks(edge_trail, G_aug)
-
-
-# ---------------------------------------------------------------------------
-# Step 8: inter-component ordering and per-walk orientation
+# Inter-component ordering and per-walk orientation
 # ---------------------------------------------------------------------------
 
 def _orient_walk_for_writing(w):

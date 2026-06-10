@@ -35,7 +35,6 @@ from penstroke.render.word import make_word_demo_html
 from penstroke.quality.metrics import has_strokes, coverage, stroke_count_matches_template
 from penstroke.quality.report import assess_letter, build_report, build_metadata_json
 from penstroke.quality.glyph_image import write_raw_glyphs
-from penstroke.quality.regime import classify_for_output_dir
 
 
 _DEFAULT_LETTERS = string.ascii_lowercase + string.ascii_uppercase
@@ -128,13 +127,6 @@ def trace_font(
     except Exception:
         pass
 
-    # Detect the font's regime (script vs print) from spec.json if present.
-    # The trace pipeline's overlap-dedup and N-shape-split stages are wrong
-    # by default for script fonts where retracing is legitimate. Default to
-    # 'print' (safer) when no spec exists.
-    regime = classify_for_output_dir(output_dir) or 'print'
-    if verbose:
-        print(f"Font regime: {regime}")
 
     # 1. Copy the original font + license
     shutil.copy(ttf_path, os.path.join(source_dir, os.path.basename(ttf_path)))
@@ -157,7 +149,7 @@ def trace_font(
                     ttf_path, ch, size=size)
             else:
                 mask, _skel, _dist, traced, tmpl, meta = trace_glyph(
-                    ttf_path, ch, size=size, regime=regime)
+                    ttf_path, ch, size=size)
         except Exception as e:
             if verbose:
                 print(f"  {ch}: ERROR {e}")

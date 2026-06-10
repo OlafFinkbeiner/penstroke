@@ -3,16 +3,21 @@
 ## What this is
 
 A Python pipeline that converts TTF fonts into hand-drawn stroke SVGs.
-Each letter is decomposed into individual pen strokes using Hershey font
-templates as a stroke-order prior, then re-rendered as animated SVG
-that preserves the target font's variable-width calligraphic character.
+Each letter is decomposed into individual pen strokes and re-rendered
+as animated SVG that preserves the target font's variable-width
+calligraphic character.
 
-The core insight: Hershey fonts (1960s public-domain stroke fonts)
-already encode "an A is three strokes" as data. We use them as a
-*template* and trace the target font's actual centerline geometry
-through those template waypoints. This converts an underspecified
-problem (what strokes are in this skeleton?) into a constrained one
-(walk shortest paths between these known waypoints).
+The core insight (current architecture): **the glyph's skeleton is a
+graph, and stroke decomposition is a graph problem.** The default
+tracer (EPST, `templates/eulerian.py`) analyses every junction of the
+skeleton multigraph globally — pairing edge-ends that continue
+smoothly into each other, terminating strokes where the geometry
+turns sharply — then mechanically follows those pairings into chains.
+One chain = one natural pen stroke. No stroke templates, no per-letter
+rules, no order-dependent decisions.
+
+The original approach (Hershey stroke-font templates as priors) is
+retained as a fallback via `--tracer template`.
 
 ## Layout
 
@@ -25,47 +30,52 @@ src/penstroke/
 │
 ├── core/                  Primitives shared by all tracing strategies
 │   ├── rasterize.py       TTF → fixed-canvas mask + font metrics
-│   ├── skeleton.py        mask → medial axis + distance transform + spur pruning
-│   ├── graph.py           skeleton → networkx graph, junction merging,
-│   │                      parallel-edge collapse (medial-axis-split detection)
+│   ├── skeleton.py        mask → medial axis (DETERMINISTIC, rng=0) +
+│   │                      distance transform + spur pruning
+│   ├── graph.py           skeleton → networkx multigraph, junction merging,
+│   │                      parallel-edge collapse (with length-ratio guard)
+│   ├── outline.py         TTF Bézier outlines → polygons in canvas coords
+│   │                      (crisp underlay + outline-coverage QA)
 │   ├── strokes.py         template-free geometric stroke decomposition
-│   │                      (fallback for non-Latin scripts)
+│   │                      (fallback for non-Latin scripts) + tangent_at +
+│   │                      trace_closed_loops helpers
 │   └── smoothing.py       spline fit, per-point widths, OU-process wobble, taper
 │
-├── templates/             Hershey-template-guided tracing (production path)
+├── templates/
+│   ├── eulerian.py        EPST — the DEFAULT tracer. Junction-first graph
+│   │                      decomposition. See module docstring for pipeline.
+│   ├── trace.py           Legacy Hershey-template tracer (--tracer template)
 │   ├── hershey.py         Load and cache Hershey font data
 │   ├── topology.py        Skeleton/template topological fingerprints
-│   ├── selection.py       Per-letter strategy: which Hershey font to use
-│   ├── scripts.py         Unicode→Hershey mapping for Greek
-│   └── trace.py           trace_glyph() — the production tracer
+│   ├── selection.py       Per-letter Hershey-variant strategy (legacy path)
+│   └── scripts.py         Unicode→Hershey mapping for Greek (legacy path)
 │
 ├── render/                Output formats
 │   ├── svg.py             Path-building primitives (ribbon polygon, centerline)
 │   ├── glyph.py           Single-letter SVG with positioning metadata
-│   ├── alphabet.py        Grid view of all letters as one SVG
+│   ├── alphabet.py        Grid view of all letters + make_preview_html
+│   ├── diagnostic.py      Per-letter QA PNG: coloured strokes in order,
+│   │                      numbered starts, per-stroke mini panels, flipbook
+│   ├── viewer_template.html  Interactive preview (play/pause/speed/scrub/wireframe)
 │   ├── word.py            HTML demo of letters composed into a word
-│   └── houdini.py         JSON export for Houdini import (variable-width curves)
+│   └── houdini.py         JSON export for Houdini import
 │
 └── quality/               Automated QA
     ├── metrics.py         Coverage, stroke count match, has-strokes
+    ├── glyph_image.py     Plain per-letter PNGs (input for vision-model QA)
+    ├── spec_validate.py   Compare AI-derived spec.json vs traced output
+    ├── cascade.py         Layered geometric/outline/spec checks → Issue list
     ├── ocr.py             Tesseract-based recognition check
     └── report.py          Assemble metrics into report.md and metadata.json
 
-scripts/                   Batch runners
-└── batch_google_fonts.py  Download + process many Google Fonts in one go
+design/                    Algorithm documentation
+├── graph_tracer_spec.json EPST design (multi-lens synthesis)
+└── epst_batch_qa.json     6-font batch QA: issue classes + per-font verdicts
 
-viewers/                   HTML template assets
-└── wrapper_with_speed.html Interactive viewer (play/pause/speed/scrub/wireframe)
-
-tests/
-├── test_smoke.py          End-to-end smoke tests
-└── fixtures/              Test fonts checked in
-    ├── caveat.ttf         OFL-licensed; safe to commit
-    └── LICENSE-Caveat.txt The SIL Open Font License
-
-pyproject.toml             Install + dependencies
-README.md                  User-facing docs
-CLAUDE.md                  This file
+scripts/batch_google_fonts.py   Batch runner (edit FONTS list at top)
+viewers/wrapper_with_speed.html Original viewer template (source of render/viewer_template.html)
+tests/test_smoke.py             End-to-end smoke tests
+tests/fixtures/caveat.ttf       OFL-licensed test font
 ```
 
 ## Common tasks
@@ -73,20 +83,13 @@ CLAUDE.md                  This file
 ### Trace one font
 
 ```bash
-penstroke trace path/to/MyFont.ttf output/myfont/
+penstroke trace path/to/MyFont.ttf output/myfont/            # EPST (default)
+penstroke trace path/to/MyFont.ttf output/myfont/ --tracer template  # legacy
 ```
 
-Produces:
-```
-output/myfont/
-├── source/MyFont.ttf            Copy of original
-├── glyphs/{a.svg, ..., cap_Z.svg}  Per-letter animated SVGs
-├── alphabet_animated.svg        All letters as a grid, sequenced animation
-├── alphabet_static.svg          Same grid, no animation
-├── word_demo.html               "hello world" composition demo
-├── metadata.json                Machine-readable per-letter index
-└── report.md                    Human-readable QA report
-```
+Key outputs: `preview.html` (interactive viewer), `diagnostics/*.png`
+(per-letter QA images — read these to judge trace quality),
+`glyphs/*.svg`, `report.md`.
 
 ### Run tests
 
@@ -94,201 +97,131 @@ output/myfont/
 python tests/test_smoke.py
 ```
 
-(Also works as `pytest tests/` if pytest is installed.)
+On Windows, prefix with `PYTHONIOENCODING=utf-8` (the tests print ✓).
 
-### Batch process Google Fonts
+### Judge trace quality (the workflow that matters)
 
-```bash
-python scripts/batch_google_fonts.py output_root/
-```
+1. Trace the font, open `output/<font>/preview.html`, watch at slow
+   speed. The real test: **does it look like a person writing?**
+2. For per-letter detail, Read `output/<font>/diagnostics/<letter>.png`.
+   The diagnostic shows each stroke in rainbow order with numbered
+   starts, direction arrows, per-stroke panels, and a flipbook strip
+   of animation frames. An agent can judge these images directly.
+3. For systematic review, the AI-spec workflow: render `glyphs_raw/`
+   PNGs (automatic), fan out vision agents per letter to produce
+   `spec.json`, then `quality/spec_validate.py` and
+   `quality/cascade.py` compare the trace against it.
 
-Downloads and processes a hardcoded list of Google Fonts. Edit the
-`FONTS` list at the top to change which ones.
+### Fix a tracing defect
 
-### Add fixes for specific letters
+**Never add per-letter fixes — always generalize** (explicit project
+rule). When a specific letter looks wrong, treat it as a specimen of a
+class: diagnose the mechanism, survey how many other letters share it,
+fix the mechanism. Where to look:
 
-When a letter renders wrong consistently across fonts, the fix usually
-goes in `src/penstroke/templates/selection.py` — the `LETTER_STRATEGY`
-dict maps each character to an ordered list of Hershey fonts to try.
-
-Examples already in there:
-- `'a': ['cursive', 'rowmans']` — try single-story 'a' first
-- `'Z': ['rowmans']` — force the 3-stroke template (cursive's 1-stroke Z
-  looks like a 2)
-- `'A': ['rowmans']` — same reason
-
-### Add support for a new script (e.g., Cyrillic)
-
-Hershey has `cyrillic` and `cyrilc_1` fonts with Cyrillic letters at
-ASCII slot positions. Mirror the Greek pattern in `templates/scripts.py`:
-
-1. Build a Unicode→ASCII slot mapping like `GREEK_MAP`.
-2. Add a routing branch in `templates/selection.py::choose_template`
-   that detects Cyrillic and routes to the right Hershey font.
-
-For scripts without a Hershey template (Hebrew, Arabic, Devanagari),
-the pipeline falls back to `core/strokes.py` geometric decomposition.
-Quality varies; usable for simple letters, breaks down on complex ones.
+- Stroke decomposition wrong (too many/few strokes, wrong split):
+  `templates/eulerian.py::analyze_junctions` (the pairing threshold
+  `MAX_CONTINUATION_TURN_DEG`) and `build_chains`.
+- Strokes wander off the ink / strays: hygiene passes in
+  `templates/eulerian.py::build_annotated_graph` (scrambled-path
+  repair, duplicate removal) and
+  `core/graph.py::collapse_parallel_edges`.
+- Wrong direction/order: `_orient_walk_for_writing`,
+  `_orient_clockwise_if_closed`, `order_all_walks` in eulerian.py.
+- Missing dots/tittles: `_split_mask_dots` in eulerian.py.
+- Skeleton itself wrong: `core/skeleton.py` (pruning) — but check the
+  graph hygiene passes first.
 
 ## Conventions and design decisions worth knowing
 
-- **Fixed canvas, consistent baseline.** Every letter is rendered onto
-  the same-size canvas with the baseline at the same Y. This is what
-  makes the per-letter SVGs composable into words — they share a
-  coordinate frame. Metadata attributes (`data-baseline`, `data-advance`,
-  `data-pad`) on each SVG let downstream tools typeset them.
+- **Junction-first, never greedy.** All junction continuation decisions
+  are made globally by `analyze_junctions` BEFORE any tracing. Walking
+  happens only after every pairing is decided. This was a hard-won
+  lesson: greedy Hierholzer walking made corner decisions depend on
+  which edges were already consumed, producing serpentine traces.
 
-- **Hershey templates as priors, not literal traces.** We sample
-  waypoints along each Hershey stroke, map them into the target font's
-  bounding box, snap to skeleton pixels, then walk shortest paths
-  between them. The shape comes from the target font; only the
-  decomposition (stroke count, order, roles) comes from Hershey.
+- **Determinism is load-bearing.** `core/skeleton.py` passes `rng=0`
+  to skimage's `medial_axis` — without it, the same glyph yields
+  different skeletons across runs (random tie-breaking), which changes
+  graph topology and stroke counts. Symptom was "intermittent stray
+  strokes". Don't remove this.
 
-- **Junction cluster merging.** The medial axis of an X-crossing
-  produces ~3 degree-≥3 nodes within 10-15px of each other. We merge
-  any cluster within 22px into a single junction (`graph.py
-  ::merge_nearby_junctions`). Don't change this without checking
-  rendering across the test fonts.
+- **Graph hygiene before decomposition.** `skeleton_to_graph` emits
+  some edges twice, and the duplicate's pixel order can be SCRAMBLED
+  (same pixel set, arc length 2-3× too long). `build_annotated_graph`
+  repairs ordering (nearest-neighbour walk) and drops duplicates.
+  Resampling a scrambled path interpolates across white space — that
+  was the root cause of the stray-stroke class.
 
-- **Parallel-edge collapse uses BOTH separation AND enclosed-area.**
-  When a thick stroke's medial axis splits into two near-parallel
-  branches, we want to collapse them. But the bowl of 'A' or 'B' also
-  has two edges between the same endpoints — we don't want to collapse
-  that. The discriminator is: small mean separation AND small enclosed
-  polygon area. Either alone is insufficient; both required.
+- **Parallel-edge collapse needs the length-ratio guard.** A true
+  medial-axis split has two near-equal-length paths; a hook's chord
+  and arc have very different lengths and must NOT be averaged
+  (averaging draws a garbage line through the enclosed region). See
+  `core/graph.py::collapse_parallel_edges`.
 
-- **Wobble is post-spline-fit, perpendicular to local tangent.** An
-  Ornstein-Uhlenbeck process produces correlated noise along each
-  stroke; we apply it perpendicular to the tangent (plus a small
-  along-tangent component for variety). Pure perpendicular wobble
-  looks too uniform.
+- **Fixed canvas, consistent baseline.** Every letter renders onto the
+  same-size canvas with the baseline at the same Y; per-letter SVGs
+  carry `data-baseline`/`data-advance`/`data-pad` so downstream tools
+  can typeset them.
 
-- **Taper profile at render time.** The width-multiplier curve in
-  `core/smoothing.py::taper_profile` pinches stroke ends to ~5% of
-  full width via a quarter-sine ease. Applied multiplicatively at
-  ribbon-rendering time — not baked into the centerline widths.
+- **Wobble is post-spline-fit, perpendicular to local tangent**
+  (OU process); taper applied multiplicatively at ribbon-render time.
 
-- **OCR validation as feedback signal.** We render each traced glyph
-  back to a raster, OCR it with tesseract, compare against the input
-  character. Score reflects how well a neural OCR engine recognizes
-  the trace. Confusable pairs (o/0/O, z/Z/2, l/I/1) don't penalize.
+- **Two-path animation.** Each stroke has an animated centerline guide
+  (stroke-dasharray draw-in, hidden until its start time to avoid
+  round-linecap dots) and a filled ribbon that fades in behind it.
+  Wireframe mode hides the ribbon.
 
-- **Two-path animation.** Each stroke has both an animated centerline
-  guide (drawn-in via stroke-dasharray) and a filled ribbon (fades in
-  behind the guide). The wireframe toggle hides the ribbon, leaving
-  just the centerline animating. Guide stroke-width is 80% of the
-  average filled width so wireframe matches each font's natural weight.
-
-## Open work items
-
-The full list from the original development sessions:
-
-1. **Houdini JSON export exists but not wired into the pipeline.** The
-   module `render/houdini.py` has `trace_to_dict()` and
-   `write_letter_json()`. The pipeline's `trace_font()` doesn't call
-   them — should emit a `glyphs.json` (or per-letter `glyphs/<x>.json`)
-   alongside each font. ~10 lines of code.
-
-2. **Hebrew templates would need hand-authoring.** No Hershey font
-   covers Hebrew. The geometric fallback in `core/strokes.py` produces
-   traceable but uneven results. Adding 22 hand-authored stroke
-   templates in a new file like `templates/hebrew_templates.py` would
-   bring Hebrew up to the same quality as Latin/Greek. ~4 hours.
-
-3. **Cyrillic mapping (easy).** Hershey has cyrillic glyphs; just need
-   the Unicode→ASCII slot map mirroring `GREEK_MAP` in
-   `templates/scripts.py`. ~10 minutes.
-
-4. **Coverage metric over-counts background for tall thin letters**
-   (i, j, I, l). It uses disc-approximation along the centerline,
-   which inflates pixel count for narrow glyphs. Should rasterize the
-   ribbon polygon properly. ~30 minutes.
-
-5. **Per-feature coverage metric.** Walk the skeleton's branches; for
-   each branch, check that at least one traced stroke passes within
-   tolerance. Catches missing serifs / dots / crossbars in a way
-   pixel coverage doesn't. Discussed in the original session but not
-   implemented. ~1 hour for the metric + a diagnostic visualization.
-
-6. **Centerline-overlap metric.** Detect cases where two strokes
-   retrace the same path (vs. legitimately crossing at a junction).
-   Requires tangent-alignment test, not just position proximity.
-   ~1 hour.
-
-7. **Diagnostic visualization per letter.** A PNG showing original
-   mask in gray + each traced stroke in distinct color + numbered
-   start markers + skeleton overlay. Useful for human review and as
-   input to AI-vision-based QA. ~30 minutes.
-
-8. **Agent-based visual QA.** With the diagnostic visualization in
-   place, an agent session can review per-letter PNGs and append
-   findings to the report. Discussed but not built. The package is
-   structured to support this workflow.
-
-9. **Self-correcting pipeline.** If a letter fails OCR or feature-
-   coverage, automatically retry with a different template and keep
-   the best result. Infrastructure exists (the metrics return
-   comparable scores), just needs wiring as a feedback loop in
-   `templates/selection.py`.
-
-10. **A regression. Some letters (notably 'A' historically) have
-    flipped between template choices across runs.** The
-    `LETTER_STRATEGY` map now locks several uppercase letters to
-    rowmans to prevent this, but there may be more cases.
+- **Windows portability**: every text-mode `open()` passes
+  `encoding='utf-8'` — the cp1252 default crashes on the Unicode in
+  generated SVG/HTML. Keep doing this.
 
 ## What works well (worth not breaking)
 
-- All ASCII printable characters trace successfully (tested on
-  12+ fonts).
-- All ASCII digits 0-9 work.
-- Connected-component handling for multi-part glyphs (i, j, !, ?,
-  ;, : — stem + dot) is robust.
-- The Greek alphabet via Hershey `greek` is clean across all 48
-  letters.
-- Word composition from per-letter SVGs typesets correctly across
-  fonts: baseline alignment, advance widths, descenders all work.
-- The interactive HTML viewer (`viewers/wrapper_with_speed.html`)
-  works in any modern browser without dependencies, supports
-  pause/play/speed/scrub/wireframe.
+- EPST decomposes unseen fonts of every style — script (Caveat,
+  DancingScript), serif (EB Garamond), slab (Arvo), sans (Lato),
+  display (Lobster) — with no per-font configuration. Validated via a
+  312-diagnostic agent QA sweep (see design/epst_batch_qa.json,
+  pre-junction-first numbers; the junction-first rewrite fixed the two
+  dominant issue classes found there).
+- Serifed capitals write naturally: H = stem, stem, crossbar, serif
+  flicks; A = diagonal, diagonal, crossbar, feet.
+- Script letters stay flowing: cursive m is 1-2 strokes, not 5.
+- Multi-part glyphs (i, j, !, ?, :, ;) — stem + dot, dots drawn last.
+- Word composition from per-letter SVGs typesets correctly (baseline,
+  advance widths, descenders).
+- The interactive preview.html works in any browser, no dependencies.
 
-## When working on this codebase
+## Open work items
 
-- **Run smoke tests after any change**: `python tests/test_smoke.py`.
-  They cover: imports, basic trace correctness on a few letters, full
-  pipeline file output, SVG metadata attributes, Houdini JSON schema.
-
-- **Visual regression matters more than metrics.** A change that
-  improves the coverage score from 0.85 to 0.90 might also make
-  letter 'M' look subtly worse. Visually inspect alphabet_static.svg
-  after non-trivial changes.
-
-- **The Hershey font cache is process-global** (in `templates/hershey.py
-  ::_cache`). Tests don't need to manage this.
-
-- **Don't add per-letter hacks to `pipeline.py`.** New letter-specific
-  behavior should go in `templates/selection.py` (template choice) or
-  `templates/trace.py` (tracing logic). The pipeline is meant to be
-  font-agnostic orchestration.
-
-- **The diagnostic for "what went wrong with letter X"** is usually:
-  look at the SVG, look at the metadata.json entry, look at any issues
-  in report.md. If the template choice is wrong, edit
-  `LETTER_STRATEGY`. If the trace shape is wrong even with the right
-  template, dig into `templates/trace.py` waypoint snapping logic.
+1. **Re-run the 6-font agent QA sweep** post-junction-first to
+   quantify the improvement (pre-rewrite baseline: ~60% clean letters,
+   issue catalog in design/epst_batch_qa.json).
+2. **Residual issue classes from that catalog**: over_split on heavy
+   serif fonts (short serif stubs as separate mini-strokes — consider
+   width-scaled spur handling), occasional stray on extreme cursive
+   terminals (an on-ink clip pass would be a cheap safety net).
+3. **Houdini JSON export not wired into the pipeline**
+   (`render/houdini.py` exists; `trace_font` doesn't call it).
+4. **Non-Latin scripts**: Greek works via the legacy tracer's Hershey
+   mapping; EPST is script-agnostic by construction but untested on
+   Greek/Cyrillic/Hebrew. The geometric fallback in `core/strokes.py`
+   covers scripts without templates.
+5. **The AI-spec workflow is manual.** `glyphs_raw/` renders
+   automatically, but producing `spec.json` requires running the
+   vision-agent fan-out by hand (in-session workflow). Could become a
+   CLI step.
 
 ## External dependencies
 
-All Python, all `pip install -e .` puts them in place:
+All Python, `pip install -e .`:
 
 - `numpy`, `scipy` — array math
 - `scikit-image` — medial axis skeletonization
-- `Pillow` — TTF rasterization to bitmap
-- `fonttools` — read TTF metrics tables
-- `networkx` — skeleton graph + shortest-path
-- `Hershey-Fonts` — Hershey font data
+- `Pillow` — TTF rasterization + diagnostic PNGs
+- `fonttools` — TTF metrics + outline extraction
+- `networkx` — skeleton multigraph
+- `Hershey-Fonts` — legacy tracer's template data
 
-Optional, used by `quality/ocr.py`:
-
-- `pytesseract` (Python wrapper) AND `tesseract` (binary) — for the
-  OCR validation metric. Pipeline runs fine without these; OCR metric
-  is skipped if unavailable.
+Optional: `pytesseract` + tesseract binary for the OCR metric
+(skipped if unavailable).

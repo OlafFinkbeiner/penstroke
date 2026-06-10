@@ -4,6 +4,51 @@ Notes on the design's evolution. The current shape of this code is a
 product of trial and error; this file preserves the reasoning so that
 future readers (human or agent) don't repeat the same dead ends.
 
+## 0.2.0 — EPST: junction-first graph tracer becomes the default
+
+### What changed
+
+- **New default tracer** (`templates/eulerian.py`): the glyph skeleton
+  is treated as a multigraph and stroke decomposition is solved as a
+  graph problem. Per glyph: build annotated multigraph → analyse ALL
+  junctions globally (optimal pairing of edge-ends by tangent
+  continuation, ≤ 75° turn) → follow pairings into chains → orient,
+  order, smooth. The Hershey tracer remains as `--tracer template`.
+- **Diagnostics for self-QA** (`render/diagnostic.py`): every trace
+  emits per-letter PNGs with rainbow-ordered strokes, numbered starts,
+  direction arrows, per-stroke panels, and an animation flipbook —
+  readable by humans and vision models alike.
+- **Interactive preview** (`preview.html`) ships with every trace:
+  play/pause/speed/scrub/wireframe.
+- **AI-assisted QA tooling**: `quality/glyph_image.py` (vision input),
+  `quality/spec_validate.py` (AI spec vs trace), `quality/cascade.py`
+  (layered geometric/outline checks), `core/outline.py` (exact TTF
+  outlines for underlay + coverage).
+- Deleted: the post-trace heuristic stack (`templates/fixes.py`) and
+  font-regime classification (`quality/regime.py`) — both were
+  band-aids over the Hershey tracer's structural limits, obsoleted by
+  the graph decomposition.
+
+### Dead ends preserved for posterity
+
+- **Stacked per-symptom heuristics** (extend/merge/split/dedup/trim
+  stages bolted onto the Hershey tracer). Each stage fixed one font's
+  symptom and broke another's. The lesson: when the decomposition is
+  structurally wrong, post-processing cannot save it.
+- **Greedy Eulerian walking** (T-join + Hierholzer with tangent
+  tie-breaking). Mathematically elegant, but corner decisions at
+  junctions depended on which edges were already consumed — and
+  minimising trail count produced serpentine outline-circuits on
+  multi-stroke capitals (H, A, E, M). The fix was junction-FIRST
+  analysis: decide every junction globally before walking anything.
+- **Non-determinism bites silently**: skimage's `medial_axis` uses
+  random tie-breaking; the same glyph yielded different skeletons,
+  topologies, and stroke counts across runs. Always pass `rng=0`.
+- **Trust nothing about graph input**: `skeleton_to_graph` emits
+  duplicate edges whose pixel order can be scrambled; resampling a
+  scrambled path interpolates across white space. Hygiene passes
+  (reorder + dedup) in `build_annotated_graph` are load-bearing.
+
 ## 0.1.0 — Initial release
 
 ### What works

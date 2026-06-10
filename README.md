@@ -33,23 +33,38 @@ pip install pytesseract
 
 ## How it works
 
+The default tracer (EPST — the junction-first graph tracer) treats the
+glyph's skeleton as a graph and lets the topology decide the strokes:
+
 1. **Rasterize** the TTF glyph onto a fixed canvas with consistent
    baseline (so per-letter outputs share a coordinate frame).
-2. **Skeletonize** to get the centerline plus distance-to-boundary
-   transform.
-3. **Pick a Hershey template** — Hershey's 1960s stroke fonts already
-   encode "an 'A' is 3 strokes drawn in this order". We use topology
-   matching to pick the right variant per-letter (single-story vs
-   double-story 'a', open-tail vs closed-tail 'g', etc.).
-4. **Snap Hershey waypoints** onto the target font's skeleton, walk
-   shortest paths through the skeleton between them.
-5. **Render** as animated SVG with per-point widths from the distance
-   transform and tapered entry/exit.
+2. **Skeletonize** (deterministic medial axis) to get the centerline
+   plus distance-to-boundary transform. Disconnected dots (the tittles
+   of i/j) are split off as tap-strokes.
+3. **Build the skeleton multigraph** — nodes are endpoints and
+   junctions, edges carry their pixel paths, arc lengths, and end
+   tangents. Hygiene passes repair scrambled paths, drop duplicate
+   edges, and collapse medial-axis splits of thick strokes.
+4. **Analyse all junctions globally** — at every junction, incident
+   edge-ends are optimally paired by tangent continuity: two ends pair
+   when a pen could continue from one into the other without turning
+   sharply (≤ 75°). Unpaired ends are stroke terminals. Every junction
+   is decided *before* any tracing, so no decision depends on
+   traversal order.
+5. **Build chains** — mechanically follow the pairings. Every skeleton
+   edge lands in exactly one chain; each chain is one natural pen
+   stroke. An 'H' comes out as two stems + a crossbar (+ serif flicks);
+   a cursive 'm' as one continuous wave.
+6. **Orient and order** — closed loops start at their topmost point and
+   run clockwise; open strokes run top-to-bottom / left-to-right; main
+   strokes are drawn before accessories, dots last.
+7. **Render** as animated SVG with per-point widths from the distance
+   transform, hand-drawn wobble, and tapered entry/exit.
 
-The key trick: instead of asking "what strokes are in this skeleton?"
-(under-specified, needs tricky heuristics), we ask "given that there
-should be a stroke from here to there to there, what skeleton path
-matches?" — a constrained, robust question with a shortest-path answer.
+No stroke-order database, no per-letter rules, no templates: a font
+never seen before decomposes correctly because the rules are pure
+geometry. The legacy Hershey-template tracer is still available via
+`--tracer template`.
 
 ## Output structure
 
@@ -61,8 +76,14 @@ output/myfont/
 ├── glyphs/                          # Per-letter animated SVGs
 │   ├── a.svg ... z.svg
 │   └── cap_A.svg ... cap_Z.svg
+├── glyphs_raw/                      # Plain per-letter PNGs (vision-QA input)
+├── diagnostics/                     # Per-letter QA images: coloured strokes,
+│                                    #   numbered starts, per-stroke panels,
+│                                    #   animation flipbook
 ├── alphabet_animated.svg            # All letters as a grid, sequenced
 ├── alphabet_static.svg              # Same grid, no animation
+├── preview.html                     # Interactive viewer (play/pause/speed/
+│                                    #   scrub/wireframe)
 ├── word_demo.html                   # "hello world" composition demo
 ├── metadata.json                    # Machine-readable per-letter index
 └── report.md                        # Human-readable QA report
@@ -87,14 +108,17 @@ Produces a top-level `index.html` linking to each font's outputs.
 See [CLAUDE.md](CLAUDE.md) for the full module-by-module breakdown.
 Short version:
 
-- `src/penstroke/core/` — rasterize, skeletonize, graph, smoothing
-- `src/penstroke/templates/` — Hershey-template-guided tracing
-- `src/penstroke/render/` — SVG, alphabet, word, Houdini outputs
-- `src/penstroke/quality/` — coverage + OCR + report assembly
+- `src/penstroke/core/` — rasterize, skeletonize, graph, outline, smoothing
+- `src/penstroke/templates/eulerian.py` — EPST, the default junction-first
+  graph tracer
+- `src/penstroke/templates/` (rest) — legacy Hershey-template tracer
+- `src/penstroke/render/` — SVG, alphabet, diagnostics, word, Houdini outputs
+- `src/penstroke/quality/` — coverage + OCR + cascade QA + report assembly
 - `src/penstroke/pipeline.py` — top-level `trace_font()` entry
 - `scripts/` — batch runners
 - `viewers/` — HTML templates
 - `tests/` — smoke tests, fixtures
+- `design/` — EPST algorithm spec + batch QA catalog
 
 ## Testing
 
@@ -115,7 +139,10 @@ see `tests/fixtures/LICENSE-*.txt` for each font's attribution.
 
 ## Acknowledgments
 
-Built around the [Hershey font catalog](https://en.wikipedia.org/wiki/Hershey_fonts)
+The legacy fallback tracer is built around the
+[Hershey font catalog](https://en.wikipedia.org/wiki/Hershey_fonts)
 by A.V. Hershey at the U.S. Naval Weapons Laboratory (1967), now
-public domain. Without those 60-year-old stroke definitions, the
-template-guided approach in this package wouldn't be possible.
+public domain. The Hershey templates were the original approach and
+remain available via `--tracer template`; the default tracer has since
+moved to a pure graph-theoretic decomposition that needs no stroke
+templates at all.

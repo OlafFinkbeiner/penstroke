@@ -92,8 +92,7 @@ def _trace_dots(mask, seed=0):
     return traced
 
 
-def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5,
-                regime='print'):
+def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5):
     """Trace one glyph using a topology-matched Hershey template.
 
     Args:
@@ -315,58 +314,11 @@ def trace_glyph(font_path, char, size=512, seed=1, n_waypoints=5,
             strokes_pixels.append(full_path)
             used_pixels.update(full_path)
 
-    # Stage 1 (before smoothing): extend each stroke into any adjacent
-    # uncovered skeleton spurs. Converts a stem with a floating bottom
-    # serif into a stem that flicks out into the serif as one continuous
-    # pen motion — the natural "draw two in one" decomposition.
-    from penstroke.templates.fixes import (
-        extend_strokes_into_spurs, cover_missing_branches,
-        merge_endpoint_adjacent_strokes, split_topmost_interior_strokes,
-        deduplicate_overlapping_strokes, trim_winding_prefix,
-        normalize_stroke_directions, order_strokes_main_first,
-    )
-    extend_strokes_into_spurs(strokes_pixels, pixel_G)
-
     traced = []
     for i, s in enumerate(strokes_pixels):
         result = smooth_and_wobble(s, dist, seed=seed + i)
         if result is not None:
             traced.append(result)
-
-    # Stage 2: cover features still missing — typically things not
-    # adjacent to any stroke endpoint, e.g. a free-floating crossbar.
-    # Self-filtered against phantom/zigzag heuristics.
-    extra = cover_missing_branches(skel, dist, traced, pixel_G, seed=seed)
-    traced.extend(extra)
-
-    # Stage 3: merge endpoint-adjacent strokes whose tangents align.
-    # Applies in both regimes — joining a continuous curve that the
-    # template walker emitted as two records is always right.
-    merge_endpoint_adjacent_strokes(traced)
-
-    # Stages 4 & 5 — print-regime cleanup.
-    # Split fires on N-shape tour paths (topmost interior + returns
-    # near start); dedup drops mutually-contained strokes. Both are
-    # legitimate cleanup steps for print decompositions where there's
-    # no biomechanical reason for the pipeline to produce duplicates
-    # or N-tours. For script regime we instead use trim_winding_prefix
-    # (stage 4b) which handles the cursive-template case where the
-    # template walker walks UP a stem before walking down — that bit
-    # would be a pen placement, not a drawn stroke.
-    if regime == 'print':
-        traced = split_topmost_interior_strokes(traced)
-        traced = deduplicate_overlapping_strokes(traced)
-    else:
-        traced = trim_winding_prefix(traced)
-
-    # Stage 6: enforce top-down by flipping strokes drawn bottom-up.
-    traced = normalize_stroke_directions(traced)
-
-    # Stage 7: order strokes so the main/dominant one comes first
-    # (longest by path length, leftmost-x tiebreak). Makes animations
-    # play in a natural drawing order — main stem, then crossbars,
-    # then accessories. Applies in both regimes.
-    traced = order_strokes_main_first(traced)
 
     # Append any dot traces (tittles, dot below 'j', etc.) collected at the
     # connected-component stage at the start of this function. Dots are
