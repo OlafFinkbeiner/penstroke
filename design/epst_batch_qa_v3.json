@@ -1,0 +1,207 @@
+{
+  "issue_classes": [
+    {
+      "kind": "over_split",
+      "total_count": 27,
+      "high_count": 7,
+      "fonts_affected": [
+        "EBGaramond",
+        "Arvo",
+        "Lato",
+        "Caveat",
+        "Lobster",
+        "DancingScript"
+      ],
+      "example_letters": [
+        "EBGaramond h (high)",
+        "EBGaramond m (high)",
+        "EBGaramond K (high)",
+        "EBGaramond W (high)",
+        "EBGaramond T (high)",
+        "Lato Z (high)",
+        "DancingScript j (high)",
+        "Arvo k",
+        "Arvo X",
+        "Arvo Y",
+        "Caveat I",
+        "DancingScript x"
+      ],
+      "change_vs_v2": "Down sharply from 76 (18 high) to 27 (7 high) — a 64% drop in total and 61% drop in high-severity. This was the dominant v2 class and the leaf pruning hit it hardest. Remaining over_split is concentrated in heavy-serif fonts (EBGaramond, Arvo) where short serif/terminal stubs are still carved off as standalone micro-strokes, plus a residual cluster at arm/leg crotch junctions (k, x, V, W) and a few script descender/junction fragments (DancingScript j, x, y)."
+    },
+    {
+      "kind": "wrong_order",
+      "total_count": 22,
+      "high_count": 3,
+      "fonts_affected": [
+        "Caveat",
+        "EBGaramond",
+        "Arvo",
+        "Lato",
+        "Lobster",
+        "DancingScript"
+      ],
+      "example_letters": [
+        "DancingScript F (high)",
+        "Caveat F",
+        "Caveat I",
+        "Caveat Y",
+        "Caveat T",
+        "EBGaramond Z",
+        "EBGaramond K",
+        "EBGaramond M",
+        "Arvo p",
+        "Arvo r",
+        "Arvo Z",
+        "DancingScript N",
+        "DancingScript Z"
+      ],
+      "change_vs_v2": "Essentially flat: 23 (0 high) in v2 to 22 (3 high) now. Leaf pruning does not touch traversal ordering, so this class is unchanged in volume as expected; the three new high cases (DancingScript F, plus the medium-heavy Caveat/EBGaramond capitals) are sequencing problems — bowl-before-stem, crossbar-before-stem, diagonal-before-bars on Z — that are orthogonal to pruning. This is now the joint-largest class and the clear next priority."
+    },
+    {
+      "kind": "wrong_direction",
+      "total_count": 13,
+      "high_count": 3,
+      "fonts_affected": [
+        "EBGaramond",
+        "Lato",
+        "Arvo",
+        "Lobster",
+        "DancingScript"
+      ],
+      "example_letters": [
+        "Lato A (high)",
+        "EBGaramond p (high)",
+        "DancingScript J (high)",
+        "Lato P",
+        "Lato R",
+        "Lato Z",
+        "Arvo K",
+        "Arvo o",
+        "Lobster N",
+        "DancingScript J",
+        "DancingScript y"
+      ],
+      "change_vs_v2": "Roughly flat: 15 (4 high) to 13 (3 high). Pruning does not address stroke orientation. Remaining cases are upward-traced stems (EBGaramond p, Lato P/R, DancingScript J), reversed bars/loops (Lato Z top bar, Arvo o clockwise), and the Lato A outline-walk (one continuous perimeter traversal forcing a bottom-up leg)."
+    },
+    {
+      "kind": "invented_terminal_fork",
+      "total_count": 4,
+      "high_count": 0,
+      "fonts_affected": [
+        "Lato"
+      ],
+      "example_letters": [
+        "Lato d",
+        "Lato f",
+        "Lato r"
+      ],
+      "change_vs_v2": "Down from 14 (1 high) to 4 (0 high) — a 71% reduction and now confined entirely to Lato (flat-terminal sans). The leaf-pruning targeting flat-cap corner forks largely worked; the residue is small hooks/curls at flat stroke terminals (d baseline, f crossbar tip, r shoulder) where the skeleton still branches slightly before reaching the flat ink edge. No high-severity instances remain."
+    },
+    {
+      "kind": "missing_feature",
+      "total_count": 3,
+      "high_count": 2,
+      "fonts_affected": [
+        "Lobster",
+        "Arvo"
+      ],
+      "example_letters": [
+        "Lobster t (high)",
+        "Arvo D (high)",
+        "Arvo x"
+      ],
+      "change_vs_v2": "Up from 1 (0 high) to 3 (2 high). This is the worrying side-effect: pruning that removes redundant-coverage leaves can also delete real features. Lobster t lost its entire crossbar, Arvo D lost its vertical stem as a distinct stroke, Arvo x lost its slab-serif terminal caps. These are over-aggressive removals — features whose ink the reconstruction judged 'already covered' but which a writer must draw."
+    },
+    {
+      "kind": "under_split",
+      "total_count": 3,
+      "high_count": 1,
+      "fonts_affected": [
+        "Lobster"
+      ],
+      "example_letters": [
+        "Lobster Y (high)",
+        "Lobster W"
+      ],
+      "change_vs_v2": "New class, absent from the v2 summary (0). Confined to Lobster display-script capitals where single strokes now wander across three-quarters of the glyph with direction reversals (Y, W). Plausibly the flip side of removing junction leaves: chains that previously broke at a pruned branch now run together into one over-long path."
+    },
+    {
+      "kind": "off_center",
+      "total_count": 1,
+      "high_count": 0,
+      "fonts_affected": [
+        "Lobster"
+      ],
+      "example_letters": [
+        "Lobster J"
+      ],
+      "change_vs_v2": "New/negligible (not in v2 summary). Single Lobster J case where the centerline rides the outer contour through the descender rather than the medial axis — a skeleton placement issue unrelated to pruning."
+    },
+    {
+      "kind": "other",
+      "total_count": 12,
+      "high_count": 0,
+      "fonts_affected": [
+        "Caveat",
+        "EBGaramond",
+        "Lato",
+        "Arvo",
+        "Lobster",
+        "DancingScript"
+      ],
+      "example_letters": [
+        "Caveat p",
+        "EBGaramond f",
+        "EBGaramond z",
+        "Lato B",
+        "Arvo i",
+        "Arvo A",
+        "Arvo F",
+        "Arvo I",
+        "Lobster B",
+        "Lobster X",
+        "Lobster Z"
+      ],
+      "change_vs_v2": "Up from 3 to 12 but all low-severity (0 high). These are borderline/defensible observations — legitimate slab-serif stubs, plausible calligraphic flicks, minor join-position quibbles — that reviewers logged as 'other' rather than firm defects. The Lato B note (whole letter as one stem-absorbed contour) is the most substantive but was filed here rather than as a hard artefact."
+    }
+  ],
+  "per_font_quality": [
+    {
+      "font": "Caveat",
+      "ok_letters": 49,
+      "letters_with_high_issues": 0,
+      "verdict": "Essentially unchanged and excellent: 49 ok (down marginally from 51 in v2), 0 high-severity. The script font was already clean and pruning neither helped nor hurt meaningfully. Remaining flaws are all low/medium ordering oddities on capitals (F, I, Y, T) — stem/serif/arm sequencing, not artefacts. Best-in-class."
+    },
+    {
+      "font": "DancingScript",
+      "ok_letters": 45,
+      "letters_with_high_issues": 2,
+      "verdict": "Flat vs v2: 45 ok (=45), still 2 high. Pruning had little effect on this clean script font. The two high cases (F wrong_order — bare stem before top flourish; J wrong_direction — stem traced bottom-up) are orientation/ordering, untouched by pruning. A handful of residual junction over_splits (j high, x, y) remain."
+    },
+    {
+      "font": "Lobster",
+      "ok_letters": 43,
+      "letters_with_high_issues": 2,
+      "verdict": "Flat count (43 ok =43) but the high-severity profile shifted: v2 had 1 high, now 2, and the NATURE changed — pruning introduced regressions. t lost its crossbar (missing_feature high) and Y became an over-long under_split. This display-script font is where over-aggressive leaf removal and chain-merging side-effects show up most."
+    },
+    {
+      "font": "Lato",
+      "ok_letters": 35,
+      "letters_with_high_issues": 1,
+      "verdict": "Improved: 35 ok (up from 30), and high-severity down to 1 (Lato A outline-walk) from 4 in v2. The invented_terminal_fork reduction directly helped this flat-sans font (forks now only 4 low-severity residuals). Remaining issues are upward-traced stems (P, R, Z) and the A/B/D/P whole-glyph outline-tracing behaviour — direction/topology problems, not pruning targets."
+    },
+    {
+      "font": "EBGaramond",
+      "ok_letters": 33,
+      "letters_with_high_issues": 4,
+      "verdict": "Improved: 33 ok (up from 29), high-severity down to 4 (h, m, K, W, T cluster) from 5. The serif font still leads in over_split — short serif terminals carved off as standalone micro-strokes on h/m/k/v/w/x and capitals K/M/N/T/V/W remain the dominant residual class here. Most improved-but-still-worst on serif fragmentation."
+    },
+    {
+      "font": "Arvo",
+      "ok_letters": 36,
+      "letters_with_high_issues": 2,
+      "verdict": "Most improved by far: 36 ok (up from 21 — a 71% jump) and high-severity down to 2 (D missing stem, H double-traced right stem) from 12. The slab-serif font was the biggest v2 victim of invented forks and serif over_split, and pruning delivered the largest gain here. Residuals are slab-serif stub over_splits (X, Y, k, m) plus the two structural highs and one missing_feature (x serif caps), where pruning over-reached."
+    }
+  ],
+  "overall_summary": "The reconstruction-based leaf pruning delivered on its two headline goals: invented_terminal_fork collapsed from 14 (1 high) to 4 (0 high) and is now confined to Lato's flat terminals, while over_split fell 64% from 76 (18 high) to 27 (7 high), with the biggest wins on the previously worst fonts (Arvo 21 to 36 ok letters, EBGaramond and Lato also up). The cost is a small but real regression class: over-aggressive removal deleted genuine features (missing_feature up to 3 with 2 high — Lobster t's crossbar, Arvo D's stem, Arvo x's serif caps), and chain-merging side-effects produced a new under_split class on Lobster display capitals (Y, W wandering as one over-long stroke). In priority order, what remains is: (1) wrong_order, now the joint-largest class at 22 and untouched by pruning — bowl/stem/crossbar/Z-bar sequencing needs a writing-order heuristic; (2) the pruning regressions — tighten the redundant-leaf test so real terminal bars and stems (crossbars, slab caps, vertical stems) are never removed and chains are not merged across pruned junctions; (3) wrong_direction at 13 (3 high) — upward-traced stems and reversed loops/bars need orientation fixes; and (4) the residual serif/junction over_split on heavy fonts (EBGaramond, Arvo), where width-scaled spur handling should absorb short serif stubs into their parent strokes rather than emitting them standalone."
+}

@@ -1,0 +1,2499 @@
+[
+ {
+  "font": "Caveat",
+  "char": "a",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "b",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "c",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "d",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 draws the ascender top-to-bottom before stroke 2 draws the bowl. Most writers draw the bowl first then add the ascender; drawing the tall stem first and the bowl second is atypical but not a hard artefact in a casual script context.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Caveat",
+  "char": "e",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "f",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "g",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "h",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "i",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "j",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "k",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "l",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "m",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "n",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "o",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "p",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 2 (bowl) starts near the top of the stem rather than at the natural mid-stem attachment point where a writer's pen would leave the stem to form the bowl. The sequencing (stem first, then bowl) is fine, but the bowl start position sits higher than expected on the glyph, making the join look slightly disconnected. Full coverage and on-ink — minor.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Caveat",
+  "char": "q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "r",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "s",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "t",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "u",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "v",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "w",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "x",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "y",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "z",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "A",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "B",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "C",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "D",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "E",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "F",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 is an isolated short leftward flick at the top-left, separated from the main spine. A natural writer draws the vertical stem top-to-bottom as one continuous stroke; here the entry flick and the top-bar+stem are split across two strokes (1 and 2), making stroke 1 a detached stub rather than a natural lead-in.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Caveat",
+  "char": "G",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "H",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "I",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "The top serif bar (stroke 1) is drawn before the main stem (stroke 2), forcing an unnatural pen-lift and reposition. A person writing a script I would draw the stem first (or enter through the top serif into the stem as one continuous motion). Stem-first then bottom serif, or a single flowing entry-serif→stem→exit-serif motion, would read naturally; top-serif then stem then bottom-serif does not.",
+    "severity": "medium"
+   },
+   {
+    "kind": "over_split",
+    "detail": "The capital I is decomposed into 3 separate strokes (top serif bar, stem, bottom serif bar). For a casual handwriting font like Caveat this is fragmented — the natural writing motion is one or two strokes, not three disconnected segments each requiring a pen lift.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Caveat",
+  "char": "J",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "K",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "L",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "M",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "N",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "O",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "P",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "Q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "R",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "S",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "T",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Crossbar drawn first (stroke 1), stem drawn second (stroke 2). Most natural writing order is stem first then crossbar. For a casual handwriting script this is a minor oddity but does not break legibility or the animation.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Caveat",
+  "char": "U",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "V",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "W",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "X",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Caveat",
+  "char": "Y",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 (red) traces the right arm top-down through the full stem to the bottom; stroke 2 (orange) traces only the short left arm stub ending at the fork junction mid-letter. A natural writing order would draw both arms converging to the fork first, then continue down the stem, or draw left arm then right arm + stem. The current order makes stroke 2 terminate abruptly in the middle of the glyph, which reads unnaturally in the flipbook.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Caveat",
+  "char": "Z",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "a",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "b",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "c",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "d",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "e",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "f",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 3 is a short isolated serif stub at the base foot. Acceptable for a serif font but marginally fragments what a writer would absorb into the stem stroke's terminal. Reads naturally enough at animation speed.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "g",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 2 is a very short connector element at the junction between the upper bowl and the lower descender tail, representing a minor over-split at that transition. The overall bowl-then-tail read is natural and the fragment is small.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "h",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "5 strokes for h is excessive. Strokes 4 and 5 are isolated short serif stubs at the base of each leg, and stroke 2 is a tiny serif arc at the top of the ascender. A human writes h in 2-3 strokes (stem + arch-and-right-leg, with serif flicks absorbed into terminals). Splitting each serif into its own standalone stroke dissolves the letter into fragments and breaks the natural writing read.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "i",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "j",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "k",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "7 strokes for a k is excessive. The arm/leg junction region is fragmented: strokes 3 and 4 are very short isolated segments clustered at the mid-body join rather than producing two clean diagonals (upper arm + lower leg). The flipbook at 60% shows the arms assembling in pieces rather than as two flowing strokes, which does not read like natural writing.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "l",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "m",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "6 strokes for a lowercase m is excessive fragmentation. Strokes 3 and 4 are short serif-stub fragments at the left foot, and strokes 5–6 cover the baseline serifs and second arch separately. A natural writer forms m in 1–3 continuous strokes (entry + arches + descents). The flipbook confirms the letter assembles in many small disconnected pieces rather than as flowing arches.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "n",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "o",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "p",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 1 starts at the top of the stem but its terminal arrow points upward, indicating the stroke travels upward along (part of) the stem rather than top-to-bottom. Natural writing draws a p stem from top down through the descender. The flipbook at 20–40% shows the stem being built with an upward-directed motion, which is unnatural.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "q",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 1 is a very short isolated segment at the top of the stem/bowl junction — likely a spur or serif flick broken out as its own stroke rather than being part of the bowl or stem. The mini-panel for stroke 1 shows only a tiny mark. The letter still reads naturally in the flipbook but the decomposition is marginally fragmented at that junction.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "r",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "s",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "t",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "u",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "v",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "4 strokes for a simple v: the two top serif stubs (strokes 3 and 4) are drawn as independent short strokes rather than as extensions of the main diagonals. A person would write v in 1–2 strokes; the serif flicks should be continuous with the diagonals, not separate.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "w",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "7 strokes for w is excessive. Several of the later strokes (4–7) appear to be isolated short serif/terminal stubs rather than continuous limbs. A natural w should be 3–5 strokes at most; the slab serif ends are being carved out as independent micro-strokes, dissolving the letter into fragments.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "x",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "6 strokes for x is excessive. X has two crossing diagonals; the extra 4 strokes appear to be isolated serif/terminal stubs at the four arm-ends. A natural x is 2–3 strokes; the serif flicks should be part of or appended to the main diagonal strokes, not carved out as separate micro-strokes.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "y",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Strokes 3 and 4 are very short fragments near the top junction/serif area of both arms. They appear to trace the bracketed serif flicks at the arm tops rather than being part of the main arm strokes. In EB Garamond these serifs are real and prominent, so short serif strokes are defensible, but two separate tiny strokes at the junction area is borderline fragmentation — a writer would handle these as part of the arm sweep.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "z",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 2 is a small isolated curl near the bottom-left terminal. The EB Garamond Z has a calligraphic swash terminal at the bottom-left, so a separate finishing stroke there is plausible, but it is very short and could read as a stray rather than a deliberate serif flick. The main Z body in one continuous stroke (stroke 1) is excellent.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "A",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "B",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "C",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "D",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "E",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 3 (yellow) is a very short stub covering only the right-terminal serif of the middle arm rather than being part of the middle-arm stroke (stroke 4). The serif flick is drawn as its own isolated stroke instead of being continuous with the arm. Mild fragmentation — the letter is still readable as natural writing.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "F",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 3 (yellow) is a very short stub covering only the right-terminal serif of the middle arm, matching the same pattern as E. The serif tip is split off as its own stroke rather than being part of the middle-arm stroke (stroke 4). Mild fragmentation but does not break the natural writing read.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "G",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "H",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Serif flicks (strokes 3, 4 at top; 6, 7 at bottom) are drawn before the stems are fully established on the opposite side, making the build order feel slightly non-canonical — a person would typically draw both full stems first, then accent with serif flicks. The animation is still readable as H but the sequencing is non-ideal.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "I",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "J",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "K",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "7 strokes for a capital K is excessive. The upper arm (stroke 2) and the lower leg (stroke 5) of the K diagonal are split into multiple pieces — strokes 1, 2, 3, 4 cover what should be the single top-arm region, and strokes 5, 6, 7 the lower leg. A natural K has 2–3 strokes: vertical stem, upper diagonal arm, lower diagonal leg. The flipbook confirms the letter builds up in many short segments rather than two clean diagonal motions.",
+    "severity": "high"
+   },
+   {
+    "kind": "wrong_order",
+    "detail": "Strokes 1 and 2 appear to draw the top serif region before the vertical stem is established. In natural writing the full left stem (top-down) comes first, then the two diagonal arms.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "L",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 2 starts at the top serif and travels to the right along the top cap — it is moving right-to-left relative to natural writing. The top serif flick should either be part of the downward stem stroke or a brief left-to-right flick, not a rightward travel from the top of the stem.",
+    "severity": "medium"
+   },
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 3 starts at the bottom-left foot and moves right along the baseline, then curves up at the right end. A natural baseline stroke goes left-to-right starting from the foot of the stem, which matches the direction here, but the start point is at the far left foot rather than continuing down from the stem — the stroke effectively orphans the foot serif from the stem, making it read as a separate baseline rather than a continuous stem-to-foot motion.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "M",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 (red) begins at the top of the right stem and travels downward — it draws the right leg before any of the left structure is established. Natural writing of M starts with the left stem (top-down), then the two diagonals, then the right stem. Starting on the right side breaks the expected left-to-right construction order.",
+    "severity": "medium"
+   },
+   {
+    "kind": "over_split",
+    "detail": "6 strokes for M is one too many. Strokes 5 and 6 appear to cover the two bottom serif/foot regions as separate short strokes rather than being absorbed into the leg strokes. The flipbook shows the bottom serifs being drawn as distinct steps, fragmenting what should be clean leg strokes.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "N",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 (red) starts mid-left-stem and goes downward, but stroke 3 (yellow) draws the diagonal from top-left to bottom-right. The left stem is not drawn as a single continuous top-to-bottom motion before the diagonal begins — it appears split across strokes 1 and 3, with the diagonal interleaved. Natural N writing: left stem top-down, diagonal top-left to bottom-right, right stem bottom-up or top-down.",
+    "severity": "medium"
+   },
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 2 (orange) starts at the top of the right stem and moves rightward along the top serif, then the right stem appears to go downward as stroke 4 (green). The top-right serif is being drawn as a separate rightward flick before the stem descends, which is an unnatural break in the right stem stroke.",
+    "severity": "medium"
+   },
+   {
+    "kind": "over_split",
+    "detail": "5 strokes for N is excessive. The left stem, diagonal, and right stem should ideally be 3 strokes (plus at most 2 serif flicks). Strokes 3 and 5 appear to be short serif/foot fragments at the base, fragmenting the overall structure.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "O",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "P",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 draws the bowl before stroke 2 draws the stem. A natural writer draws the stem top-down first, then lifts to add the bowl. The bowl-first order is slightly unnatural but not severely disruptive.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "Q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "R",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "S",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "T",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The crossbar is fragmented across three strokes (1 red stub at upper-left, 2 orange right arm, 4 green short left arm) instead of one or two natural arm sweeps. A person would draw the crossbar as a single left-to-right stroke or at most two arms from centre.",
+    "severity": "high"
+   },
+   {
+    "kind": "over_split",
+    "detail": "Stroke 5 (blue) is an isolated short bottom-left serif flick drawn as its own stroke after the stem is complete, which reads unnaturally in the flipbook.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "U",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The top-left serif is drawn as a separate first stroke (stroke 1) before the main U bowl stroke begins. For EB Garamond's prominent serifs this is marginal, but it slightly fragments the natural down-and-around motion.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "V",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The right diagonal is split: stroke 2 (orange) is a short stub near the top of the left arm and stroke 3 traces the right diagonal rather than the right arm running cleanly from its own top-right origin straight to the apex. The two diagonals should each be one stroke from top to apex.",
+    "severity": "high"
+   },
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 4 (green) is a rightward serif flick at the top-right drawn last, which is acceptable, but stroke 3 appears to originate mid-glyph rather than from the top-right corner, suggesting the right arm was not cleanly decomposed from its serif terminus.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "W",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "9 strokes for a W is excessive. The main diagonals (strokes 1-2) are correct, but the internal V and crossbar region are fragmented into 7 additional short strokes (3-9). A natural W needs 3-5 diagonal strokes; the mini panels confirm each of strokes 4-9 covers only a small segment. The flipbook reads as staccato rather than flowing writing.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "EBGaramond",
+  "char": "X",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "Y",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "EBGaramond",
+  "char": "Z",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 is the diagonal, strokes 2 and 3 are the top and bottom bars respectively. A natural writing order is top bar first, then diagonal, then bottom bar. Drawing the diagonal before the top bar is unnatural and would cause a writer to go back upward to start the top bar.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "a",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "b",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "c",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "d",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "invented_terminal_fork",
+    "detail": "Stroke 1 (stem) has a small downward hook at the baseline terminus; Lato has a flat terminal there, so the hook is an artefact, not a real serif.",
+    "severity": "medium"
+   },
+   {
+    "kind": "invented_terminal_fork",
+    "detail": "Stroke 2 (bowl loop) ends with a small hook at its baseline endpoint where the terminal should be flat.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "e",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "f",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "invented_terminal_fork",
+    "detail": "The right end of the crossbar (stroke 2) shows a small fork/hook at its flat terminal. Lato has no serif there — this is an artefact of the skeleton branching at the flat tip.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "g",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The upper bowl is split into two strokes: stroke 1 covers most of the bowl arc and stroke 2 is a tiny fragment tracing the exit tail of the upper counter. A natural writer draws the upper bowl as one continuous stroke; the fragment (stroke 2) reads as an unnatural interruption and appears to drift slightly off the ink body.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "h",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "i",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "j",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "k",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "l",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "m",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "n",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "o",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "p",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "r",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "invented_terminal_fork",
+    "detail": "The arm/shoulder stroke ends with a visible hook curling upward-right at the terminal. Lato has flat stroke ends — no serif — so this curl is an artefact of the skeleton not terminating cleanly on the flat ink edge.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "s",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "t",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "u",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "v",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "w",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "x",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "y",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "z",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "A",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 1 traces the full perimeter of the A as a single continuous walk: up the left diagonal, across the apex, then down the right diagonal. This means one leg is traversed bottom-up (or the path crosses white space at the counter). A natural A is written as two top-down diagonals plus a crossbar, not as a single outline loop. The flipbook reads as outline tracing, not handwriting.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "B",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "The entire B is traced as 1 stroke that draws both bump outlines starting from the mid-stem junction, with no explicit top-to-bottom stem stroke. The vertical stem is absorbed into the bump contours rather than drawn as a natural downward first stroke. The flipbook starts with the lower arc and builds upward, which does not read like a person writing B (stem first, then bumps).",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "C",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "D",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "The single stroke traces the full closed perimeter of the D (stem down, along baseline, around the bowl, back up the stem), which is an outline-tracing motion rather than natural writing. A person draws D as a downward stem stroke followed by a separate or continuous bowl arc starting from the top. The flipbook reads as a contour trace, not a writing gesture.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "E",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "F",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "G",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "H",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "I",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "J",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "K",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "L",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "M",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "N",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Left stem is drawn last (stroke 3) rather than first; diagonal and right stem are drawn before the left stem, which is slightly unnatural for a person writing N (typical order: left stem, diagonal, right stem). Not a serious defect — all parts are covered and on-ink.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "O",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "P",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "The single stroke starts at the bottom of the stem and travels upward before looping the bowl. A natural writing motion would start at the top of the stem and draw downward; the flipbook confirms the stem is traced bottom-to-top.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "Q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "R",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 1 starts at the mid-left of the stem and travels upward through the bowl before returning down. The stem should be drawn top-to-bottom; the upstroke start is unnatural and visible in the flipbook.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lato",
+  "char": "S",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "T",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "U",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "V",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "W",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "X",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "Y",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lato",
+  "char": "Z",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Z is decomposed into 3 separate strokes (diagonal, top bar, bottom bar) instead of one continuous stroke (top-bar → diagonal → bottom-bar), which is how a person naturally writes Z.",
+    "severity": "high"
+   },
+   {
+    "kind": "wrong_direction",
+    "detail": "The top bar (stroke 2) is drawn right-to-left. A naturally written Z bar runs left-to-right.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "a",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "b",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "c",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "d",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "e",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "f",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "g",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "h",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The left-stem foot slab is traced as its own separate stroke (stroke 3, yellow-green), detached from the stem stroke that ends above it. A person drawing 'h' would extend the stem through the slab in one continuous motion; splitting it yields an unnatural three-stroke count where two strokes feel like one.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "i",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 1 begins with a small rightward hook before descending the stem. The Arvo 'i' has a bracketed slab serif at the top, so a brief entry-hook is consistent with the font's terminal; not an artefact. Minor cosmetic wobble only.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "j",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "k",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The arm/leg junction of the k is split into three separate strokes (2, 3, 4) instead of the expected two diagonals. Stroke 3 is a short isolated fragment at the crotch, suggesting the skeleton junction is producing an extra stub chain. A natural k has: stem, upper-right arm, lower-right leg — three strokes total, not four.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "l",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "m",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The three bottom serif bars (strokes 4, 5, 6) are each traced as isolated short horizontal strokes detached from their parent arch descents. A natural writer integrates serifs as stroke endings; here the letter dissolves into 6 fragments instead of ~2-3 flowing arches.",
+    "severity": "medium"
+   },
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 3 traces only the top entry of the leftmost arch while stroke 1 covers the left stem — the arch entry and stem are split across non-consecutive strokes, making the build order feel disjointed in the flipbook.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "n",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "o",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "The single loop runs clockwise from the top-right. Western handwriting convention for 'o' is counterclockwise. The letter is fully covered and the stroke stays on the ink, but the direction is reversed from natural writing.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "p",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "The bowl (stroke 1) is drawn before the stem (stroke 2). Natural writing order for 'p' is stem first (top-down through the baseline), then the bowl added at the top-right. Drawing the bowl first makes the animation read unnaturally.",
+    "severity": "medium"
+   },
+   {
+    "kind": "over_split",
+    "detail": "The bottom-left serif foot is rendered as a separate isolated stroke (stroke 3) rather than as the natural ending of the stem stroke. This is the same slab-serif fragmentation seen in 'm'.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "r",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 draws the shoulder/crossbar area before stroke 2 draws the main vertical stem. A natural writer draws the stem top-down first, then lifts to add the shoulder. Here the order is inverted: shoulder first, stem second.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "s",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "t",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "u",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "v",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "w",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "x",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "missing_feature",
+    "detail": "The four prominent slab-serif terminal caps visible in the yellow underlay at all corners of the X are not traced as separate strokes. Only the two diagonal centerlines are drawn, leaving the wide flat serif heads uncovered. In a geometric slab-serif like Arvo these terminals are a significant part of the letter's ink mass.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "y",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "z",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 2 is a very short stub near the top-left serif. It is likely a real slab-serif terminal bar rather than an artefact — the underlay shows slab serifs at all terminals — but the decomposition leaves the main Z-shape as stroke 1 and isolates one serif nub as stroke 2. Acceptable for a slab-serif font; the main sweep reads correctly.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "A",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Strokes 3 and 4 are very short marks at the bottom-left and bottom-right serif feet. These correspond to real slab-serif foot bars visible in the underlay, so they are not invented artefacts. However, isolating each foot as its own stroke rather than incorporating them into the diagonal strokes adds minor fragmentation. Acceptable for a slab-serif font.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "B",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "C",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "D",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "missing_feature",
+    "detail": "The vertical left stem does not appear as its own distinct stroke. Stroke 1 is a short stub/arc covering only the upper-left serif region rather than running top-to-bottom as a full stem. The bottom-left serif area also appears underserved. The result is that a person watching the animation would not see a clear vertical stem being drawn.",
+    "severity": "high"
+   },
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 2 (the large bowl arc) starts at the top and sweeps the full right curve, but it begins before the stem is established, so the letter does not build in the natural stem-first order a writer would use.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "E",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 3 is a very short stub near the lower-right of the letter, likely a slab-serif remnant from the junction where the bottom bar meets the right edge. It reads as a micro-fragment rather than a meaningful arm or serif flick. For Arvo's geometry this may be an unavoidable spur, but it slightly interrupts the animation flow.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "F",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 3 is a short bottom-left foot/slab element. In Arvo's slab-serif design this is a legitimate serif bar at the stem foot, so treating it as a separate short stroke is acceptable. No meaningful defect.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "G",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "H",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The right stem appears split across strokes 2 and 3 — both start markers cluster at the top-right of the right stem and both per-stroke mini-panels show the same near-full-height vertical segment. The right stem is traced twice as two separate strokes while the left stem is a single stroke, producing an asymmetric fragmentation that would not read as natural writing.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "I",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 1 covers the stem and implicitly starts at the top-left corner of the top serif bar, but the top crossbar serif is not explicitly traced as its own short horizontal stroke the way the bottom serif is (stroke 2). The top bar is present in the final frame so coverage is technically complete, but a person drawing Arvo's capital I would typically flick the top bar explicitly as a separate gesture, mirroring the bottom one. Minor — does not break legibility.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "J",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "K",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 2 (upper arm) runs from the stem junction upward to the top-right corner. A natural writer draws the upper arm top-right to center, not center upward to top-right. The direction arrow confirms the upward travel.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "L",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "M",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "N",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "O",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "P",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "Q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "R",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "S",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "T",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 draws the right portion of the crossbar and then the stem in one connected path, rather than the more natural stem-first then crossbar order. The animation reads as crossbar-right + stem drawn first, left crossbar arm second. Functional but slightly unnatural write order for a capital T.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "U",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 2 is a very short stub covering only the top-right serif cap area, isolated from the main bowl stroke. This reads as a minor fragmentation of what could be a single continuous stroke from top-left, around the bowl, to top-right. Acceptable for slab-serif handling but borders on unnecessary fragmentation.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "V",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 2 appears to travel from left to right toward the upper-right terminal rather than top-down. For a V the natural motion is two downward diagonals meeting at the vertex; having a stroke that travels upward/rightward from the join area is a minor direction anomaly, though the overall shape is correct.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "W",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Arvo",
+  "char": "X",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Strokes 3 and 4 are tiny isolated slab-serif stubs at the bottom-left and bottom-right terminals of the two diagonals. The serif bars have been split off as separate mini-strokes rather than being absorbed as the natural end of the diagonal strokes, leaving the animation with two vestigial flicks after the main X body is already drawn.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "Y",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Strokes 3 and 4 are very short slab-serif stubs at the top terminals of the left and right arms respectively. They appear as isolated tiny horizontal fragments rather than being part of the arm strokes, causing the top serifs to animate as disconnected afterthoughts instead of natural stroke ends.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Arvo",
+  "char": "Z",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "The diagonal slash (stroke 1) is drawn before the top and bottom horizontal bars (strokes 2 and 3). A person naturally draws the top bar first, then the diagonal, then the bottom bar. Starting with the diagonal means the letter is initially unrecognisable as a Z and the horizontals appear as additions to a stray line rather than the frame being built first.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "a",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "b",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "c",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "d",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "e",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "f",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "g",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "The single stroke traces the descender loop before the body bowl, so the flipbook builds the descender first and the body second. For a script g a person would normally draw the body first then the descender, but because it is one continuous chain the animation still reads as natural writing — severity is low.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "h",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "i",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "j",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The stem and descender swash are split into two separate strokes (1 and 2) where a writer would naturally draw them as one continuous top-to-bottom motion ending in the curl. The split is minor and the animation still reads as j-writing, but a single stroke would be more natural.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "k",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "l",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "m",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "n",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "o",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "p",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "r",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "s",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "t",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "missing_feature",
+    "detail": "The crossbar of the t is entirely absent from the trace. The yellow underlay shows a clear horizontal bar extending to the left of the stem, but the single stroke only covers the vertical stem and base curve. The crossbar is never drawn in any flipbook frame.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "u",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "v",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "w",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 starts on the right side of the letter and stroke 2 on the left, so the letter builds right-before-left. For a left-to-right script this is slightly unnatural, though both strokes are individually correct motions and the animation still reads as plausible writing.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "x",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The lower-left limb is broken out as a separate third stroke (yellow-green, very short) rather than being part of a continuous diagonal sweep. A natural cursive x would expect 2 strokes (one diagonal with the upper-right arm, one sweeping through from upper-left to lower-right exit); the isolated short stroke at the lower-left terminal feels like an artefact of a junction being cut where the skeleton branches rather than continuing through.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "y",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "z",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "A",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "B",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 2 (orange, upper bowl) appears to cover only a short arc near the mid-junction rather than the full upper lobe. The upper bowl may be under-traced relative to the yellow underlay, though collective coverage looks acceptable. Worth a closer check if rendering looks thin on the upper bump.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "C",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "D",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "E",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "F",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "G",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "H",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "I",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "J",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "off_center",
+    "detail": "The single stroke traces the outer contour edge of the glyph rather than the medial skeleton, most visible through the descending curve and lower bowl where the centerline is clearly displaced toward the boundary rather than running down the middle of the ink.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "K",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "L",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "M",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "N",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 2 traces the right stem from bottom to top: it starts at the base of the diagonal, continues down-left, then travels upward along the right stem to exit at the top-right. A person would draw the right stem top-down. The flipbook confirms the right stem is animated ascending rather than descending.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "O",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "P",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "Q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "R",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "S",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "T",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "U",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "V",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "Lobster",
+  "char": "W",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "under_split",
+    "detail": "The entire W is covered by only 3 strokes, but stroke 3 (olive/yellow) traces the full left cursive bowl and the wide lower zigzag of the W in one long continuous path — that is a very long wandering stroke that does not read like a natural writing motion. A person would not draw the left bowl and then swing all the way across the wide lower portion in one unbroken stroke.",
+    "severity": "medium"
+   },
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 (red) starts at the top-centre and goes down the right inner diagonal; stroke 2 (orange) draws the top-right upstroke. The right arm is drawn before the left bowl/entry stroke (stroke 3). A calligrapher would write the entry/left side first, then the right. The flipbook reads right-side-first, which feels unnatural for a script W.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "X",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke 1 (red) begins at the lower-left, sweeps up through the crossing zone and curls over into the upper-left entry loop — this is a long rising stroke that covers the left diagonal and the decorative loop. It stays on the ink and reads as a single fluid cursive motion, so it is acceptable, though unconventional.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "Y",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "under_split",
+    "detail": "Stroke 1 (red) starts at the lower-left entry, sweeps up, traces the entire left arm, crosses the junction, then continues all the way down the descending tail — it covers roughly three-quarters of the whole glyph in one stroke. This is an unusually long, direction-reversing path (up then down) that would not be a single pen motion for a calligrapher.",
+    "severity": "high"
+   },
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 2 (orange) starts at the top-right and moves downward into the fork junction. A natural order would be: left arm top-down, then right arm top-down meeting at the fork, then the descender. Having the descender bundled into stroke 1 and the right arm as stroke 2 inverts the expected sequence.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "Lobster",
+  "char": "Z",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "other",
+    "detail": "Stroke order is: 1=diagonal slash top-right to bottom-left, 2=top bar (right to left, then short), 3=bottom swash curl. The diagonal going first before the top bar is slightly non-canonical (a writer would normally do top bar, diagonal, bottom bar), but for a display script Z with a pronounced diagonal the decomposition is readable and the flipbook does build the letter in a plausible calligraphic sequence. Severity is low.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "a",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "b",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "c",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "d",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 draws the tall ascender stem top-down before stroke 2 draws the bowl. A human writing cursive d would typically draw the bowl first and sweep up into the ascender in one motion, or at least start from the bowl. The split is clean and stays on ink, but the ascender-first order is slightly unnatural for script handwriting.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "e",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "f",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "g",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 3 is a very short isolated mark at the top-right of the bowl that appears to be a small entry/exit flick fragmented off from stroke 2. In DancingScript this terminal region has a real calligraphic feature so it is not a pure artefact, but splitting it as a third stroke rather than keeping it continuous with the bowl stroke makes the animation read as a hesitation rather than a flowing motion.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "h",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "i",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "j",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The descending stem and curved tail of the cursive j are fragmented into 5 strokes. A natural script j needs 1–2 strokes (stem+curve, then dot). The per-stroke panels show each piece is a tiny stub, and the flipbook does not read as a single flowing pen motion.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "k",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "l",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "m",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "n",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "o",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "p",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "r",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "s",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "t",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "u",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "v",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "w",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "x",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 3 is a very short stub at the crossing point of the x rather than a complete diagonal. The two main diagonals should each be one continuous stroke; the crossing zone has been fragmented into a residual mini-stroke that would not read as a natural pen movement.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "y",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 2 (orange, left arm of the y) travels bottom-to-top per its arrow, where a natural downstroke from the top of the arm is expected for a cursive y.",
+    "severity": "medium"
+   },
+   {
+    "kind": "over_split",
+    "detail": "Stroke 3 is a very short nub at the junction between the two arms with no independently identifiable glyph feature; appears to be a residual fragment from an over-split at the junction node.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "z",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "A",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "Stroke 3 is a very short entry-tick stub at the left base of the A. The underlay does show a slight swash entry there, so it may be a legitimate micro-stroke, but it is borderline — if the font terminal is truly flat this is a spurious fragment.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "B",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "C",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "D",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "E",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "F",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 draws only the diagonal stem downward in isolation; stroke 2 then backtracks to the top to draw the entry loop/flourish. A natural cursive F starts with the top loop entry, descends through the stem, then adds the crossbar. Drawing the bare stem before the top flourish requires a pen-lift and restart at the top, which does not read as natural writing.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "G",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "H",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Right diagonal stem is drawn first (stroke 1), then the left looped stem (stroke 2). In cursive H the left structure is naturally written before the right stem. The animation reads slightly unnatural but all ink is covered and no strokes leave the glyph.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "I",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "J",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_direction",
+    "detail": "Stroke 1 traces the main stem bottom-to-top (starting at the base of the hook curl and travelling upward through the vertical). A natural J is written top-down into the hook. The flipbook consequently builds the letter from the bottom up, which reads as unnatural handwriting.",
+    "severity": "high"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "K",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "L",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "M",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "over_split",
+    "detail": "The M is decomposed into 4 strokes where a natural writer would use 1–2 continuous motions through the entry swash and three humps. Stroke 2 is a short upward arc fragment that doubles back over the region already covered by stroke 1, breaking what should be a single flowing cursive motion.",
+    "severity": "medium"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "N",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 (the diagonal slash from top-right to bottom-left) fires before the left entry stem and swash (strokes 2–3). A natural cursive writer begins with the left entry stroke then sweeps into the diagonal, not the other way around.",
+    "severity": "medium"
+   },
+   {
+    "kind": "over_split",
+    "detail": "The left entry swash of the N is split across two strokes (2 and 3) where it should be a single continuous downstroke. Stroke 3 is a short fragment covering the lower portion of the left stem that stroke 2 left incomplete.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "O",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "P",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stem drawn first (stroke 1, top-to-bottom), then bowl (stroke 2). For a flowing script P a person would more naturally draw the bowl as part of a continuous entry before or during the stem, but the two-stroke split is functional and the animation reads as writing.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "Q",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "R",
+  "ok": true,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "Stroke 1 draws the cursive entry hook and left stem downward; stroke 2 then starts back at the top to draw the bowl and kick leg. Restarting at the top for stroke 2 after the stem is complete breaks continuous flow — a natural script R would integrate the bowl into the stem motion before lifting. Low severity: the result is legible and the strokes stay on ink.",
+    "severity": "low"
+   }
+  ]
+ },
+ {
+  "font": "DancingScript",
+  "char": "S",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "T",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "U",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "V",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "W",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "X",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "Y",
+  "ok": true,
+  "issues": []
+ },
+ {
+  "font": "DancingScript",
+  "char": "Z",
+  "ok": false,
+  "issues": [
+   {
+    "kind": "wrong_order",
+    "detail": "The diagonal body (stroke 1) is drawn before the top bar (stroke 2) and bottom flourish (stroke 3). A natural writer would draw the top bar first, then the diagonal, then the bottom bar. The current order makes the animation read as diagonal-first, which looks unnatural for Z.",
+    "severity": "medium"
+   }
+  ]
+ }
+]

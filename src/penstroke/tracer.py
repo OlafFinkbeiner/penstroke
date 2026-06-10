@@ -150,6 +150,14 @@ def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
                                     # uncovered-area bound, with slack
     ABS_FLOOR_PX2 = 9.0             # sub-visible at render scale; guards
                                     # hairline strokes where r² → 0
+    TIP_CLEARANCE_MAX = 4.5         # a corner branch terminates AT a
+                                    # boundary corner, so its free tip's
+                                    # distance-transform value is bounded
+                                    # by the corner rounding from the σ=1.5
+                                    # boundary smoothing (≈ 3σ) — a raster
+                                    # property, independent of stroke
+                                    # weight. A real feature's branch ends
+                                    # with the feature's own half-width.
     COVER_EPS = 0.5                 # pixel-quantisation slack on disk radii
 
     H, W = mask.shape
@@ -178,6 +186,12 @@ def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
             # Branch pixels, excluding the junction-side endpoint pixel
             # (it's shared with the rest of the skeleton).
             jct = v if deg_u == 1 else u
+            tip = u if deg_u == 1 else v
+            # Tip-clearance gate: only branches that actually run INTO a
+            # boundary corner are cap-fork candidates. Real features
+            # (crossbars, slab caps, arms) end with their own half-width.
+            if float(dist_map[int(tip[0]), int(tip[1])]) > TIP_CLEARANCE_MAX:
+                continue
             branch = [tuple(p) for p in path if tuple(p) != tuple(jct)]
             if not branch:
                 continue
