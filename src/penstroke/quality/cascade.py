@@ -26,6 +26,7 @@ often false positives worth ignoring.
 from dataclasses import dataclass, field, asdict
 from typing import Optional
 import json
+import math
 import os
 
 import numpy as np
@@ -236,28 +237,168 @@ def spec_issues(char, traced, spec_entry):
     return issues
 
 
+# ----- Layer 4: on-ink check -----
+
+def off_ink_issues(char, traced, mask, max_off_fraction=0.10,
+                   min_run_px=6.0):
+    """Detect stroke centerlines that leave the glyph's ink.
+
+    A correct centerline lies inside the mask everywhere (the medial
+    axis is inside by construction). Sample every stroke point against
+    the mask; report strokes whose off-ink fraction exceeds
+    `max_off_fraction`, plus any contiguous off-ink run longer than
+    `min_run_px` (a short crossing at a junction edge is noise; a long
+    run is a stray cutting through white space).
+    """
+    H, W = mask.shape
+    issues = []
+    for i, (xs, ys, _ws) in enumerate(traced):
+        xi = np.clip(np.round(xs).astype(int), 0, W - 1)
+        yi = np.clip(np.round(ys).astype(int), 0, H - 1)
+        on_ink = mask[yi, xi].astype(bool)
+        if on_ink.all():
+            continue
+        off_fraction = float((~on_ink).mean())
+        # Longest contiguous off-ink run, in path-length pixels.
+        longest_run = 0.0
+        run = 0.0
+        for j in range(1, len(xs)):
+            step = float(np.hypot(xs[j] - xs[j - 1], ys[j] - ys[j - 1]))
+            if not on_ink[j]:
+                run += step
+                longest_run = max(longest_run, run)
+            else:
+                run = 0.0
+        if off_fraction > max_off_fraction or longest_run > min_run_px:
+            sev = 'high' if longest_run > 3 * min_run_px else 'medium'
+            issues.append(Issue(
+                char=char, kind='off_ink', severity=sev,
+                detail=f'stroke {i} leaves the ink: {off_fraction:.0%} of '
+                       f'points off-mask, longest off-run {longest_run:.0f}px',
+                data={'stroke': i, 'off_fraction': off_fraction,
+                      'longest_run_px': longest_run},
+            ))
+    return issues
+
+
+# ----- Layer 5: invented terminal forks (flat-cap medial-axis horns) -----
+
+def terminal_hook_issues(char, traced, outlines,
+                         turn_deg=35.0, flatness_tol_factor=0.35):
+    """Detect terminal hooks the medial axis INVENTED at flat stroke caps.
+
+    The medial axis of a wide stroke with a flat end cap bifurcates into
+    two short diagonal branches running to the cap's corners (the medial
+    axis of a rectangle is its spine plus four corner diagonals). The
+    junction-pairing then continues the spine into one of those corner
+    branches, so the traced stroke ends with a little hook — a serif-like
+    flick that does not exist in the letterform. Lato's flat-terminal
+    stems show this clearly.
+
+    Detection per stroke END:
+      1. Hook geometry: within the last ~1.5×width of path, the heading
+         turns by more than `turn_deg` relative to the approach heading.
+      2. Outline flatness: collect outline points within 2×width of the
+         stroke end and measure their deviation from a fitted straight
+         line. FLAT outline (deviation ≤ flatness_tol_factor × width)
+         means there is no real serif there — the hook is invented.
+    Both must hold. A real serif fails (2): its outline protrudes.
+    """
+    if not outlines:
+        return []
+    outline_pts = np.vstack([np.asarray(p, dtype=float)
+                             for p in outlines if len(p) >= 2])
+    issues = []
+    for i, (xs, ys, ws) in enumerate(traced):
+        n = len(xs)
+        if n < 12:
+            continue
+        med_w = float(np.median(ws))
+        for end_name, idx_end, direction in (('start', 0, 1), ('end', n - 1, -1)):
+            # Path indices: the terminal segment ≈ last 1.5×width of arc
+            # length, the approach segment is the preceding 2×width.
+            seg_len = 0.0
+            j = idx_end
+            terminal_j = None
+            while 0 <= j + direction < n:
+                j += direction
+                seg_len += float(np.hypot(xs[j] - xs[j - direction],
+                                          ys[j] - ys[j - direction]))
+                if terminal_j is None and seg_len >= 1.5 * med_w:
+                    terminal_j = j
+                if seg_len >= 3.5 * med_w:
+                    break
+            if terminal_j is None or abs(j - terminal_j) < 2:
+                continue
+            approach_j = j
+            # Headings (pointing toward the stroke end).
+            hx_t = xs[idx_end] - xs[terminal_j]
+            hy_t = ys[idx_end] - ys[terminal_j]
+            hx_a = xs[terminal_j] - xs[approach_j]
+            hy_a = ys[terminal_j] - ys[approach_j]
+            na = math.hypot(hx_a, hy_a)
+            nt = math.hypot(hx_t, hy_t)
+            if na < 1e-6 or nt < 1e-6:
+                continue
+            cosv = (hx_t * hx_a + hy_t * hy_a) / (na * nt)
+            turn = math.degrees(math.acos(max(-1.0, min(1.0, cosv))))
+            if turn < turn_deg:
+                continue
+            # Outline flatness near the end point. outline pts are (x, y).
+            ex, ey = float(xs[idx_end]), float(ys[idx_end])
+            d = np.hypot(outline_pts[:, 0] - ex, outline_pts[:, 1] - ey)
+            near = outline_pts[d <= 2.0 * med_w]
+            if len(near) < 4:
+                continue
+            # Fit a line via PCA; max perpendicular deviation = flatness.
+            c = near - near.mean(axis=0)
+            _, _, vt = np.linalg.svd(c, full_matrices=False)
+            deviation = float(np.abs(c @ vt[1]).max())
+            if deviation <= flatness_tol_factor * med_w:
+                issues.append(Issue(
+                    char=char, kind='invented_terminal_fork',
+                    severity='medium',
+                    detail=f'stroke {i} {end_name} hooks {turn:.0f}° within '
+                           f'1.5×width of a FLAT outline cap (deviation '
+                           f'{deviation:.1f}px vs width {med_w:.1f}px) — '
+                           f'medial-axis corner branch, not a real feature',
+                    data={'stroke': i, 'which_end': end_name,
+                          'turn_deg': turn, 'outline_deviation': deviation,
+                          'median_width': med_w},
+                ))
+    return issues
+
+
 # ----- Top-level cascade -----
 
-def run_cascade(char, traced, outlines=None, spec_entry=None):
+def run_cascade(char, traced, outlines=None, spec_entry=None, mask=None):
     """Run all layers and return a flat list of Issues."""
     issues = []
     issues.extend(geometric_issues(char, traced))
     if outlines:
         issues.extend(outline_issues(char, outlines, traced))
+        issues.extend(terminal_hook_issues(char, traced, outlines))
     if spec_entry is not None:
         issues.extend(spec_issues(char, traced, spec_entry))
+    if mask is not None:
+        issues.extend(off_ink_issues(char, traced, mask))
     return issues
 
 
-def run_cascade_on_output(output_dir, font_path, letters):
+def run_cascade_on_output(output_dir, font_path, letters, size=384,
+                          tracer='eulerian'):
     """Run cascade across a finished trace output directory.
 
     Reads spec.json if present, re-extracts outlines for every letter,
-    re-traces (since trace results aren't saved in raw form). Returns a
-    dict char -> [Issue, ...] and writes a summary to cascade.md.
+    re-traces with the SAME tracer the pipeline default uses (since
+    trace results aren't saved in raw form). Returns a dict
+    char -> [Issue, ...].
     """
-    from penstroke.templates.trace import trace_glyph
     from penstroke.core.outline import extract_outlines
+    if tracer == 'eulerian':
+        from penstroke.templates.eulerian import trace_glyph_eulerian as _trace
+    else:
+        from penstroke.templates.trace import trace_glyph as _trace
 
     spec = None
     spec_path = os.path.join(output_dir, 'spec.json')
@@ -268,15 +409,16 @@ def run_cascade_on_output(output_dir, font_path, letters):
     per_letter_issues = {}
     for ch in letters:
         try:
-            _, _, _, traced, _, _ = trace_glyph(font_path, ch)
+            mask, _, _, traced, _, _ = _trace(font_path, ch, size=size)
         except Exception:
             continue
         try:
-            outlines = extract_outlines(font_path, ch)
+            outlines = extract_outlines(font_path, ch, size=size)
         except Exception:
             outlines = []
         spec_entry = spec.get(ch) if spec else None
-        issues = run_cascade(ch, traced, outlines=outlines, spec_entry=spec_entry)
+        issues = run_cascade(ch, traced, outlines=outlines,
+                             spec_entry=spec_entry, mask=mask)
         if issues:
             per_letter_issues[ch] = issues
     return per_letter_issues

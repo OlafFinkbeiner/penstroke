@@ -1,0 +1,191 @@
+{
+  "issue_classes": [
+    {
+      "kind": "over_split",
+      "total_count": 76,
+      "high_count": 18,
+      "fonts_affected": [
+        "EBGaramond",
+        "Arvo",
+        "Lato",
+        "Lobster",
+        "DancingScript"
+      ],
+      "example_letters": [
+        "Arvo:X",
+        "Arvo:m",
+        "Arvo:E",
+        "EBGaramond:H",
+        "EBGaramond:W",
+        "Arvo:K",
+        "Arvo:N",
+        "Arvo:H",
+        "EBGaramond:k",
+        "EBGaramond:w"
+      ],
+      "mechanism_hypothesis": "The dominant residual class by far. Serif/slab terminals and arch-to-foot junctions create extra skeleton branch nodes; at each such node the junction tangent-pairing finds no smooth continuation (the serif stub leaves the stem at a sharp ~90 deg angle, exceeding the <=75 deg continuation threshold), so the stub edge is left unpaired and emitted as its own micro-chain. Counts explode on Arvo (slab serifs on every terminal: X=12, m=10, E=10, K=9, H=9, N=8 strokes) and EBGaramond (bracketed serifs: H=7, W=9, k=7, w=7). The pairing rule has no notion of stub length: a 3-pixel serif spur is treated as a full peer edge rather than absorbed into its parent stem's terminal taper. A width- or length-scaled merge (absorb spurs shorter than some fraction of the local stroke width / parent length into the adjacent chain) would collapse the bulk of these."
+    },
+    {
+      "kind": "wrong_order",
+      "total_count": 23,
+      "high_count": 0,
+      "fonts_affected": [
+        "Caveat",
+        "EBGaramond",
+        "Lato",
+        "Lobster",
+        "DancingScript",
+        "Arvo"
+      ],
+      "example_letters": [
+        "DancingScript:d",
+        "DancingScript:N",
+        "DancingScript:M",
+        "Lato:Z",
+        "Lobster:T",
+        "Caveat:T"
+      ],
+      "mechanism_hypothesis": "Almost entirely low severity now (zero high). After chains are built, the order_all_walks pass sequences them by a geometric heuristic that does not encode handwriting conventions: stem-before-bowl (P, R, D, cursive d), top-bar-before-diagonal (Z), stem-before-crossbar (T), left-limb-first (M, N), and bowl-first construction for cursive descenders. The chains and their internal direction are correct; only the firing sequence reads slightly unnatural in the flipbook. A convention-aware ordering prior (verticals/stems first, then bars, then accessories last; left-to-right, top-to-bottom tie-break) would resolve these but the visual cost is low."
+    },
+    {
+      "kind": "wrong_direction",
+      "total_count": 15,
+      "high_count": 4,
+      "fonts_affected": [
+        "Caveat",
+        "EBGaramond",
+        "Lato",
+        "Arvo",
+        "DancingScript"
+      ],
+      "example_letters": [
+        "Lato:A",
+        "EBGaramond:p",
+        "Arvo:Z",
+        "Lato:Y",
+        "Lato:N",
+        "EBGaramond:M"
+      ],
+      "mechanism_hypothesis": "Strokes drawn against handwriting convention: stems bottom-up instead of top-down (EBGaramond p, Lato B/N/Y, DancingScript J), diagonals running upward (Lato A traces a single up-and-over U through the apex, Arvo Z and A go bottom-up), horizontal arms right-to-left (Lato t, EBGaramond E/F middle arm). The _orient_walk_for_writing pass picks a chain direction from geometry (e.g. start at lowest endpoint) without the priors 'stems descend' and 'horizontals run left-to-right'. The Lato A high case is also partly an under-split symptom: the whole outline is one chain so orientation can't help. Adding directional priors keyed on chain aspect (vertical->top-down, horizontal->LTR) would fix most."
+    },
+    {
+      "kind": "invented_terminal_fork",
+      "total_count": 14,
+      "high_count": 1,
+      "fonts_affected": [
+        "Lato",
+        "EBGaramond",
+        "DancingScript",
+        "Arvo"
+      ],
+      "example_letters": [
+        "Lato:r",
+        "Lato:d",
+        "Lato:F",
+        "Lato:u",
+        "Lato:x",
+        "Lato:N",
+        "EBGaramond:U",
+        "Arvo:w"
+      ],
+      "mechanism_hypothesis": "Concentrated on Lato (flat-terminal sans, 9 of 14). A short hook or fork appears at a flat stroke terminal where the font has no serif. Mechanism: the medial axis flares into a small Y near a flat/butt terminal (the distance-transform ridge splits as it approaches the squared end), producing a tiny spur the tracer follows off the true centerline, sometimes a few pixels past the ink edge. This is the residual tail of the old stray-stroke class, now mostly clipped but still leaking at flat terminals. A terminal-spur prune (drop unpaired leaf edges shorter than ~local stroke width near a degree-1 endpoint) or an on-ink clip pass would remove them."
+    },
+    {
+      "kind": "stray_stroke",
+      "total_count": 6,
+      "high_count": 1,
+      "fonts_affected": [
+        "Lato",
+        "DancingScript",
+        "Arvo"
+      ],
+      "example_letters": [
+        "Lato:g",
+        "DancingScript:x",
+        "Lato:w",
+        "Arvo:M",
+        "Lato:M"
+      ],
+      "mechanism_hypothesis": "Sharply down from the pre-rewrite baseline (14 -> 6, only 1 high: Lato g). Remaining cases are a chain whose resampled path cuts through white space (Lato g stroke 2 crosses the bowl gap; DancingScript x sweeps left of the ink before entering) or a terminal overshooting the ink edge (Lato w, Arvo M, Lato M tiny detached fragment). Root cause is the same scrambled-/long-path family the junction-first hygiene targeted, plus interpolation across a junction gap when two chain segments are stitched. Largely solved; an on-ink clip safety net would mop up the residue."
+    },
+    {
+      "kind": "double_trace",
+      "total_count": 1,
+      "high_count": 1,
+      "fonts_affected": [
+        "Arvo"
+      ],
+      "example_letters": [
+        "Arvo:z"
+      ],
+      "mechanism_hypothesis": "Down from 8 at baseline to a single case (Arvo z high). The top slab bar's two parallel medial-axis paths (bar edge vs serif arc) were not collapsed, so the chain wraps the slab and encloses white space. This is exactly the collapse_parallel_edges length-ratio-guard scenario: a slab bar plus its serif return have unequal lengths, so the guard correctly refuses to average them, but here that leaves both edges in the chain and the walk loops around. A near-essentially-solved class with one slab-specific straggler."
+    },
+    {
+      "kind": "missing_feature",
+      "total_count": 1,
+      "high_count": 0,
+      "fonts_affected": [
+        "Arvo"
+      ],
+      "example_letters": [
+        "Arvo:D"
+      ],
+      "mechanism_hypothesis": "Single low-severity case: Arvo D left stem traced as a short arc-hook sliver rather than the full-height stem, suggesting the stem chain was truncated where the bowl junction stole most of its length to an adjacent chain. Isolated; likely the same junction-pairing greediness that over-splits serifs, manifesting as under-coverage rather than a stub. Not a systemic class."
+    },
+    {
+      "kind": "other",
+      "total_count": 3,
+      "high_count": 0,
+      "fonts_affected": [
+        "Lato",
+        "Arvo",
+        "DancingScript"
+      ],
+      "example_letters": [
+        "Lato:b",
+        "Arvo:S",
+        "DancingScript:z"
+      ],
+      "mechanism_hypothesis": "Minor catch-all: a brief retrace where a continuous bowl rejoins a stem (Lato b), defensible slab-serif terminal splits (Arvo S), and a chain split placed mid-letter rather than at the natural entry transition (DancingScript z). All low severity, no shared mechanism, no action warranted."
+    }
+  ],
+  "per_font_quality": [
+    {
+      "font": "Caveat",
+      "ok_letters": 51,
+      "letters_with_high_issues": 0,
+      "verdict": "Near-perfect (51/52, zero high-severity); only Caveat X has a medium wandering diagonal. Up from baseline 33 ok -> effectively the cleanest font, script style suits junction-first."
+    },
+    {
+      "font": "DancingScript",
+      "ok_letters": 45,
+      "letters_with_high_issues": 2,
+      "verdict": "Strong (45/52); residual issues are cursive order/direction priors plus two high over_split descenders (j, M). Up from baseline 33; flowing script decomposes well."
+    },
+    {
+      "font": "Lobster",
+      "ok_letters": 43,
+      "letters_with_high_issues": 1,
+      "verdict": "Good (43/52); mostly low over_split of script accessory curls, one high case (f crossbar+curl degenerate stubs). Up from baseline 33."
+    },
+    {
+      "font": "Lato",
+      "ok_letters": 30,
+      "letters_with_high_issues": 4,
+      "verdict": "Mixed (30/52); the sans flat-terminal forks (invented_terminal_fork) and stem over_splits (d, H, Y, A) dominate. Roughly flat vs baseline 33 — the new forks/over_splits offset gains elsewhere; worth targeting."
+    },
+    {
+      "font": "EBGaramond",
+      "ok_letters": 29,
+      "letters_with_high_issues": 5,
+      "verdict": "Weak on serifs (29/52); bracketed-serif over_split is pervasive, high on k, w, x, H, W, V, p. Roughly flat vs baseline 28 — serpentine under_split is gone but serif spur over_split replaced it."
+    },
+    {
+      "font": "Arvo",
+      "ok_letters": 21,
+      "letters_with_high_issues": 12,
+      "verdict": "Worst font (21/52, 12 high); heavy slab serifs fragment nearly every capital into 6-12 strokes (X=12, m=10, E=10, K=9, H=9, N=8). Down from baseline 27 — the dominant unsolved class lives here."
+    }
+  ],
+  "overall_summary": "The junction-first rewrite decisively killed the two worst pre-rewrite classes: under_split serpentine outline-circuits (31, with 24 high) are gone entirely, and the directional/order/stray/double_trace counts all dropped sharply (wrong_direction 58->15, wrong_order 40->23, stray_stroke 14->6, double_trace 8->1). Script and casual fonts are now excellent — Caveat 51/52 with zero high-severity, DancingScript 45, Lobster 43 — confirming the graph approach shines where strokes flow. The single dominant residual class is over_split (~76 instances, 18 high), almost entirely serif/slab terminal spurs and arch-to-foot junctions being emitted as their own micro-strokes; it concentrates catastrophically on Arvo (21/52, capitals fragmenting into 6-12 strokes) and EBGaramond (29/52), which are now the only weak fonts. Priority order for the next fix: (1) length/width-scaled spur absorption to collapse short serif stubs into their parent chains — this single mechanism would recover most of Arvo and EBGaramond and lift the global clean rate well past baseline's ~60%; (2) a flat-terminal spur prune / on-ink clip to remove Lato's invented terminal forks (9 cases) and the last stray strokes; (3) low-value polish — handwriting-convention priors for stem-down direction and stem/bar/accessory ordering, which are now almost all low-severity cosmetic issues.\""
+}
