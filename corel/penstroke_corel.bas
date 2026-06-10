@@ -229,7 +229,7 @@ Private Sub WriteShapeSamples(fnum As Integer, sh As Shape, _
             ' GetPointPositionAt walks the subpath by absolute offset.
             sp.GetPointPositionAt x, y, total * i / n, cdrAbsoluteSegmentOffset
             Print #fnum, "S;" & pageIdx & ";" & sIdx & ";" & _
-                         Format$(x, "0.00") & ";" & Format$(canvasH - y, "0.00")
+                         Num$(x) & ";" & Num$(canvasH - y)
         Next i
 NextSp:
     Next sp
@@ -237,6 +237,13 @@ End Sub
 
 
 ' ---------------------------------------------------------------------
+Private Function Num$(v As Double)
+    ' Locale-safe number formatting: VBA's Format$ writes decimal
+    ' COMMAS on e.g. German Windows; the CSV needs periods.
+    Num$ = Replace(Format$(v, "0.00"), ",", ".")
+End Function
+
+
 Private Function GetFilePath(title As String) As String
     On Error GoTo Fallback
     GetFilePath = CorelScriptTools.GetFileBox( _

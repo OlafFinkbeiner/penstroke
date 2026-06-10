@@ -312,6 +312,13 @@ def write_edit_csv(output_dir, csv_path, font_name, ttf_path, letters,
     return len(glyph_pages)
 
 
+def _f(s):
+    """Locale-tolerant float: VBA's Format$ writes decimal COMMAS on
+    e.g. German Windows. The CSV field separator is ';', so a comma
+    inside a field is always a decimal mark."""
+    return float(s.replace(',', '.'))
+
+
 def read_edit_csv(csv_path):
     """Parse an edit CSV (as written by us OR by the Corel export macro).
 
@@ -334,9 +341,9 @@ def read_edit_csv(csv_path):
                 header = {
                     'version': parts[2],
                     'font_name': parts[3],
-                    'canvas_w': int(float(parts[4])),
-                    'canvas_h': int(float(parts[5])),
-                    'size': int(float(parts[6])),
+                    'canvas_w': int(_f(parts[4])),
+                    'canvas_h': int(_f(parts[5])),
+                    'size': int(_f(parts[6])),
                 }
             elif tag == 'G':
                 page = int(parts[1])
@@ -347,7 +354,7 @@ def read_edit_csv(csv_path):
             elif tag == 'S':
                 page = int(parts[1])
                 si = int(parts[2])
-                x, y = float(parts[3]), float(parts[4])
+                x, y = _f(parts[3]), _f(parts[4])
                 strokes_by_page.setdefault(page, {}).setdefault(
                     si, []).append((x, y))
             elif tag == 'B' and parts[2] == 'S':
@@ -355,7 +362,7 @@ def read_edit_csv(csv_path):
                 # the cubic so import handles both formats uniformly.
                 page = int(parts[1])
                 si = int(parts[3])
-                vals = [float(v) for v in parts[4:12]]
+                vals = [_f(v) for v in parts[4:12]]
                 p0 = np.array(vals[0:2]); c1 = np.array(vals[2:4])
                 c2 = np.array(vals[4:6]); p3 = np.array(vals[6:8])
                 flat = _flatten_beziers([(p0, c1, c2, p3)], step_px=2.0)
