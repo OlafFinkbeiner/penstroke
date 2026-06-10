@@ -90,7 +90,7 @@ def trace_font(
     license_id: str = "OFL-1.1",
     license_text: Optional[str] = None,
     verbose: bool = True,
-    tracer: str = 'template',
+    tracer: str = 'eulerian',
 ):
     """Process one TTF font end-to-end into a self-contained output folder.
 

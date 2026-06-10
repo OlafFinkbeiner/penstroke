@@ -235,6 +235,218 @@ def split_components(G, skel):
 
 
 # ---------------------------------------------------------------------------
+# Junction-first decomposition
+#
+# Instead of walking the graph greedily (Hierholzer) and deciding at each
+# junction mid-walk — where already-consumed edges force wrong turns — we
+# analyse ALL junctions globally first, then mechanically follow the
+# decided pairings.
+#
+#   1. analyze_junctions: at each node, look at every incident edge-end
+#      and its outward tangent. Two ends CONTINUE into each other when
+#      the motion direction is preserved (turn angle ≤ threshold).
+#      Choose the optimal pairing (minimum total turn) among all valid
+#      pairings; ends left unpaired are STROKE TERMINALS at that node.
+#
+#   2. build_chains: every edge has two ends; each end either continues
+#      into its paired end or terminates. Following pairings end-to-end
+#      partitions ALL edges into chains — each chain is one natural
+#      stroke. No walk-order dependence, no consumed-edge corners.
+#
+# This single pass replaces the T-join + Hierholzer + sharp-turn-split
+# machinery for decomposition purposes (those remain below for
+# reference until fully retired).
+# ---------------------------------------------------------------------------
+
+MAX_CONTINUATION_TURN_DEG = 75.0   # max turn angle for two edge-ends to
+                                   # count as one continuing pen motion
+
+
+def _edge_ends_at(G, v):
+    """All edge-ends incident to node v.
+
+    Returns a list of dicts: {eid: (u, v, k), side: 0|1, tangent: vec}
+    where side identifies which end of the stored path sits at v
+    (0 = path[0], 1 = path[-1]) and tangent is the outward unit tangent
+    at that end (pointing away from v into the edge). Self-loops
+    contribute two distinct ends.
+    """
+    ends = []
+    seen_eids = set()
+    vt = tuple(v)
+    for nb in G.neighbors(v):
+        for k in G[v][nb]:
+            u_, v_ = (v, nb) if v <= nb else (nb, v)
+            eid = (u_, v_, k)
+            if eid in seen_eids:
+                continue
+            seen_eids.add(eid)
+            path = list(G[u_][v_][k]['path'])
+            if len(path) < 2:
+                continue
+            # An end belongs to v for each path extremity that sits at v.
+            # Normal edge: exactly one matches. Self-loop: both match.
+            if tuple(path[0]) == vt:
+                # Outward tangent from path start: direction path[0]→inward.
+                t = np.asarray(path[min(20, len(path) - 1)], dtype=float) \
+                    - np.asarray(path[0], dtype=float)
+                n_ = np.linalg.norm(t)
+                ends.append({'eid': eid, 'side': 0,
+                             'tangent': t / n_ if n_ > 0 else t})
+            if tuple(path[-1]) == vt:
+                t = np.asarray(path[max(0, len(path) - 1 - 20)], dtype=float) \
+                    - np.asarray(path[-1], dtype=float)
+                n_ = np.linalg.norm(t)
+                ends.append({'eid': eid, 'side': 1,
+                             'tangent': t / n_ if n_ > 0 else t})
+    return ends
+
+
+def _pair_score(t_a, t_b):
+    """Turn angle if motion continues from end a into end b.
+
+    Both tangents point OUTWARD from the node. Continuing straight
+    through means leaving along -t_a's motion... concretely: motion
+    arrives along -t_a and departs along t_b, so a perfect continuation
+    has t_b ≈ -t_a → dot(t_a, t_b) ≈ -1. Score = angle between -t_a
+    and t_b (0 = straight, pi = U-turn back into the same direction).
+    """
+    d = float(np.clip(-np.dot(t_a, t_b), -1.0, 1.0))
+    return math.acos(d)
+
+
+def analyze_junctions(G):
+    """Globally decide, for every node, which edge-ends continue into
+    which.
+
+    Returns dict: (eid, side) -> (eid, side) for every paired end.
+    Unpaired ends are absent from the dict — they are stroke terminals.
+
+    At each node the pairing is chosen by exhaustive search over all
+    ways to pair up the ends (degree is small — rarely above 6),
+    minimising total turn angle, with pairs above
+    MAX_CONTINUATION_TURN_DEG disallowed entirely. Leaving an end
+    unpaired costs a fixed penalty slightly above the threshold so
+    that two ends pair exactly when their turn is acceptable.
+    """
+    max_turn = math.radians(MAX_CONTINUATION_TURN_DEG)
+    unpaired_cost = max_turn * 1.05
+    pairing = {}
+
+    for v in G.nodes:
+        ends = _edge_ends_at(G, v)
+        n = len(ends)
+        if n < 2:
+            continue
+
+        # Precompute pair scores; None = disallowed.
+        score = {}
+        for i in range(n):
+            for j in range(i + 1, n):
+                s = _pair_score(ends[i]['tangent'], ends[j]['tangent'])
+                score[(i, j)] = s if s <= max_turn else None
+
+        # Exhaustive best pairing over index set.
+        best = {'cost': None, 'pairs': []}
+
+        def search(remaining, pairs, cost):
+            if cost is not None and best['cost'] is not None \
+                    and cost >= best['cost']:
+                return
+            if not remaining:
+                if best['cost'] is None or cost < best['cost']:
+                    best['cost'] = cost
+                    best['pairs'] = list(pairs)
+                return
+            i = remaining[0]
+            rest = remaining[1:]
+            # Option: leave i unpaired.
+            search(rest, pairs, cost + unpaired_cost)
+            # Option: pair i with each j.
+            for j in rest:
+                s = score.get((min(i, j), max(i, j)))
+                if s is None:
+                    continue
+                rest2 = [x for x in rest if x != j]
+                pairs.append((i, j))
+                search(rest2, pairs, cost + s)
+                pairs.pop()
+
+        search(list(range(n)), [], 0.0)
+
+        for (i, j) in best['pairs']:
+            a = (ends[i]['eid'], ends[i]['side'])
+            b = (ends[j]['eid'], ends[j]['side'])
+            pairing[a] = b
+            pairing[b] = a
+
+    return pairing
+
+
+def build_chains(G, pairing):
+    """Partition all edges into chains (strokes) by following pairings.
+
+    Each chain is a list of oriented pixel paths concatenated into one
+    pixel walk. Every edge appears in exactly one chain. Chains either
+    run terminal-to-terminal or close into a loop.
+    """
+    visited = set()
+    chains = []
+
+    def oriented_path(eid, entry_side):
+        """Edge pixel path oriented so traversal ENTERS at entry_side."""
+        u_, v_, k = eid
+        path = list(G[u_][v_][k]['path'])
+        if entry_side == 1:
+            path = path[::-1]
+        return path
+
+    def walk_from(eid, entry_side):
+        """Follow pairings from (eid, entered at entry_side) until a
+        terminal or until the chain closes. Returns pixel walk."""
+        walk = []
+        cur_eid, cur_entry = eid, entry_side
+        while True:
+            visited.add(cur_eid)
+            p = oriented_path(cur_eid, cur_entry)
+            if walk:
+                walk.extend(p[1:])
+            else:
+                walk.extend(p)
+            exit_side = 1 - cur_entry
+            nxt = pairing.get((cur_eid, exit_side))
+            if nxt is None:
+                break
+            nxt_eid, nxt_side = nxt
+            if nxt_eid in visited:
+                break  # chain closed into a loop
+            cur_eid, cur_entry = nxt_eid, nxt_side
+        return walk
+
+    # 1. Chains starting at terminals (ends with no pairing).
+    all_eids = []
+    for u_, v_, k in G.edges(keys=True):
+        eid = (u_, v_, k) if u_ <= v_ else (v_, u_, k)
+        if eid not in all_eids:
+            all_eids.append(eid)
+    for eid in all_eids:
+        if eid in visited:
+            continue
+        for side in (0, 1):
+            if (eid, side) not in pairing:
+                if eid not in visited:
+                    chains.append(walk_from(eid, side))
+                break
+
+    # 2. Remaining edges are in closed pairing-cycles; walk each.
+    for eid in all_eids:
+        if eid not in visited:
+            chains.append(walk_from(eid, 0))
+
+    return [c for c in chains if len(c) >= 2]
+
+
+# ---------------------------------------------------------------------------
 # Step 3: T-join parity repair
 # ---------------------------------------------------------------------------
 
@@ -637,15 +849,21 @@ def trace_glyph_eulerian(font_path, char, size=384, seed=1):
     G = build_annotated_graph(skel, dist)
     components, orphan_loops = split_components(G, skel)
 
-    # Collect (walk, bbox, total_len) entries from each component.
+    # Junction-first decomposition: analyse ALL junctions globally
+    # (pair edge-ends by tangent continuation), then mechanically follow
+    # the pairings into chains. No greedy walking, no consumed-edge
+    # corners, and multi-stroke letters (H, A, E) split naturally at
+    # junctions where the geometry doesn't continue.
+    pairing = analyze_junctions(G)
+
     entries = []
     for spec in components:
-        if spec.topology_class in ('CLOSED_LOOP', 'MULTI_LOOP') and not spec.odd_vertices:
-            walks = handle_closed_component(spec)
-        else:
-            walks = handle_open_component(spec)
+        Gc = spec.subgraph
+        walks = build_chains(Gc, pairing)
+        walks = [_orient_clockwise_if_closed(w) if (w and w[0] == w[-1])
+                 else w for w in walks]
         for w in walks:
-            if len(w) < 2:
+            if len(w) < 2 or _polyline_length(w) < MIN_WALK_LEN_PX:
                 continue
             arr = np.asarray(w)
             bbox = (int(arr[:, 0].min()), int(arr[:, 1].min()),
