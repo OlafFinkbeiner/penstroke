@@ -7,7 +7,7 @@ Attribute VB_Name = "PenstrokeRoundtrip"
 '   after the glyph), the original letterform as a locked pale-yellow
 '   underlay, and every pen stroke as a named curve "s01", "s02", ...
 '   Edit freely: reshape nodes, delete strokes, draw new ones. The
-'   stroke ORDER for the animation is the object NAME — rename to
+'   stroke ORDER for the animation is the object NAME - rename to
 '   reorder, name new strokes "s05" etc. Colors don't matter.
 '
 ' PenstrokeExportEdits:
@@ -15,7 +15,7 @@ Attribute VB_Name = "PenstrokeRoundtrip"
 '   same CSV format back. Feed that to `penstroke import-corel`.
 '
 ' Install: Tools > Macros > Macro Editor, File > Import File... this
-' .bas — or just Tools > Macros > Run Macro after opening it.
+' .bas - or just Tools > Macros > Run Macro after opening it.
 '
 ' Coordinates: the CSV stores pixels with y pointing DOWN; Corel pages
 ' have y pointing UP, so both macros flip y. 1 pixel = 1 point.
@@ -224,13 +224,12 @@ End Sub
 
 ' ---------------------------------------------------------------------
 Private Function GetFilePath(title As String) As String
-    Dim fd As FileOpenDialog   ' CorelDRAW exposes Corel's open dialog
     On Error GoTo Fallback
     GetFilePath = CorelScriptTools.GetFileBox( _
         "CSV files (*.csv)|*.csv|All files (*.*)|*.*", title, 0)
     Exit Function
 Fallback:
-    GetFilePath = InputBox(title & " — full path to CSV:", "Penstroke")
+    GetFilePath = InputBox(title & " - full path to CSV:", "Penstroke")
 End Function
 
 Private Function GetSavePath(title As String) As String
@@ -239,5 +238,5 @@ Private Function GetSavePath(title As String) As String
         "CSV files (*.csv)|*.csv|All files (*.*)|*.*", title, 1)
     Exit Function
 Fallback:
-    GetSavePath = InputBox(title & " — full path for CSV:", "Penstroke")
+    GetSavePath = InputBox(title & " - full path for CSV:", "Penstroke")
 End Function
