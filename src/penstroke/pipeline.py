@@ -36,8 +36,10 @@ from penstroke.quality.report import assess_letter, build_report, build_metadata
 from penstroke.quality.glyph_image import write_raw_glyphs
 
 
-_DEFAULT_LETTERS = (string.ascii_lowercase + string.ascii_uppercase
-                    + '@€$§&?#+*/ÜÖÄ')
+# Fallback set, used only when the font's cmap can't be enumerated.
+# The normal default is ALL drawable glyphs in the font (letters=None).
+_FALLBACK_LETTERS = (string.ascii_lowercase + string.ascii_uppercase
+                     + '@€$§&?#+*/ÜÖÄ')
 
 # Glyphs per row in the alphabet grid / preview.
 GRID_COLS = 13
@@ -86,7 +88,8 @@ def trace_font(
     ttf_path: str,
     output_dir: str,
     font_name: Optional[str] = None,
-    letters: str = _DEFAULT_LETTERS,
+    letters: Optional[str] = None,
+    charset: str = 'latin',
     size: int = 384,
     demo_word: str = "hello world",
     license_id: str = "OFL-1.1",
@@ -115,6 +118,16 @@ def trace_font(
     Returns:
         Path to the output directory.
     """
+    # Default: the chosen charset preset, intersected with the font's
+    # cmap ('latin' covers ASCII + Latin-1; use charset='all' for the
+    # complete font).
+    if letters is None:
+        try:
+            from penstroke.editround import font_charset
+            letters = font_charset(ttf_path, charset=charset)
+        except Exception:
+            letters = _FALLBACK_LETTERS
+
     os.makedirs(output_dir, exist_ok=True)
     glyphs_dir = os.path.join(output_dir, 'glyphs')
     os.makedirs(glyphs_dir, exist_ok=True)

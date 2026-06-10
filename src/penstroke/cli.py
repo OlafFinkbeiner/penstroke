@@ -57,9 +57,13 @@ def main(argv=None):
     p_trace.add_argument('output_dir', help='Directory to write outputs into.')
     p_trace.add_argument('--name', default=None, help='Human-readable font name.')
     p_trace.add_argument('--letters', default=None,
-                         help='Characters to trace (default: a-z + A-Z + symbols).')
-    p_trace.add_argument('--all', action='store_true', dest='all_glyphs',
-                         help='Trace EVERY drawable glyph in the font cmap.')
+                         help='Explicit characters to trace (overrides '
+                              '--charset).')
+    p_trace.add_argument('--charset', default='latin',
+                         choices=['ascii', 'latin', 'latin-ext',
+                                  'cyrillic', 'all'],
+                         help='Charset preset, intersected with the font '
+                              "cmap (default: latin = ASCII + Latin-1).")
     p_trace.add_argument('--size', type=int, default=384,
                          help='Rasterization pixel size (default: 384).')
     p_trace.add_argument('--word', default='hello world',
@@ -94,12 +98,10 @@ def main(argv=None):
             'demo_word': args.word,
             'verbose': not args.quiet,
         }
-        if args.all_glyphs:
-            from penstroke.editround import font_charset
-            kwargs['letters'] = font_charset(args.ttf)
-            print(f"tracing ALL {len(kwargs['letters'])} drawable glyphs")
-        elif args.letters is not None:
+        if args.letters is not None:
             kwargs['letters'] = args.letters
+        else:
+            kwargs['charset'] = args.charset
         trace_font(args.ttf, args.output_dir, **kwargs)
 
     elif args.command == 'export-corel':

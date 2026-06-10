@@ -260,13 +260,31 @@ def load_stroke_store(output_dir):
     return out
 
 
-def font_charset(ttf_path):
-    """Every drawable character in the font's cmap, sorted by codepoint.
+# Charset presets: Unicode block ranges, intersected with whatever the
+# font's cmap actually carries. 'all' = every drawable glyph.
+CHARSETS = {
+    'ascii': [(0x21, 0x7E)],
+    'latin': [(0x21, 0x7E), (0xA1, 0xFF)],
+    'latin-ext': [(0x21, 0x7E), (0xA1, 0xFF), (0x100, 0x24F),
+                  (0x1E00, 0x1EFF)],
+    'cyrillic': [(0x400, 0x52F)],
+    'all': None,
+}
 
-    Control characters and pure whitespace are skipped; glyphs that
-    rasterize to nothing are filtered later by the trace loop itself.
+
+def font_charset(ttf_path, charset='latin'):
+    """Drawable characters in the font's cmap for a named charset preset.
+
+    Control characters, whitespace, and combining marks are skipped
+    (combining marks have no standalone letterform; they're only kept
+    in 'all'). Glyphs that rasterize to nothing are filtered later by
+    the trace loop itself.
     """
     from fontTools.ttLib import TTFont
+    if charset not in CHARSETS:
+        raise ValueError(f'unknown charset {charset!r}; '
+                         f'options: {", ".join(CHARSETS)}')
+    ranges = CHARSETS[charset]
     tt = TTFont(ttf_path)
     cmap = tt.getBestCmap()
     chars = []
@@ -274,7 +292,12 @@ def font_charset(ttf_path):
         ch = chr(cp)
         if ch.isspace():
             continue
-        if unicodedata.category(ch).startswith('C'):
+        cat = unicodedata.category(ch)
+        if cat.startswith('C'):
+            continue
+        if cat == 'Mn' and charset != 'all':
+            continue   # combining marks: no standalone letterform
+        if ranges is not None and not any(a <= cp <= b for a, b in ranges):
             continue
         chars.append(ch)
     return ''.join(chars)
