@@ -118,6 +118,49 @@
     text-align: center;
     line-height: 1.5;
   }
+  /* Selection tool: click a glyph cell to mark it for manual repair. */
+  #svg-container svg .cell-bg { cursor: pointer; }
+  #svg-container svg .cell-bg.sel {
+    stroke: #d22;
+    stroke-width: 3;
+    fill: #fff5f5;
+  }
+  .selbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 22px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: 13px;
+    color: #555;
+    max-width: 1100px;
+  }
+  .selbar input[type=text] {
+    flex: 1 1 420px;
+    min-width: 260px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    padding: 6px 8px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    color: #333;
+  }
+  .selbar button {
+    padding: 6px 14px;
+    font-size: 13px;
+    background: #eee;
+    color: #222;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .selbar button:hover { background: #ddd; }
+  .selbar .selcount { font-weight: 600; color: #d22; min-width: 90px; }
 </style>
 </head>
 <body>
@@ -139,10 +182,20 @@
     </div>
   </div>
 
+  <div class="selbar">
+    <span class="selcount" id="selcount">0 selected</span>
+    <input type="text" id="selcmd" readonly
+           placeholder="Click glyph cells to select them for manual repair…">
+    <button id="selcopy">Copy command</button>
+    <button id="selclear">Clear</button>
+  </div>
+
   <div id="svg-container">__SVG_GOES_HERE__</div>
 
   <p class="footnote">
     Drag the time slider to scrub through the animation. Slow down to study stroke order, speed up to skim.
+    Click a glyph cell to mark it for manual repair; the command box builds the matching
+    <code>penstroke export-corel</code> call.
   </p>
 
 <script>
@@ -235,6 +288,55 @@
   wireframeBtn.addEventListener('click', () => {
     container.classList.toggle('wireframe');
     wireframeBtn.classList.toggle('active');
+  });
+
+  // ---- Selection tool: mark glyphs for manual repair in CorelDRAW ----
+  const selected = new Set();   // hex codepoints
+  const selcount = document.getElementById('selcount');
+  const selcmd = document.getElementById('selcmd');
+
+  // The output folder is wherever this preview.html lives.
+  function outputDir() {
+    let p = decodeURIComponent(window.location.pathname);
+    // file:///D:/foo/bar/preview.html -> D:/foo/bar
+    p = p.replace(/\/[^\/]*$/, '');
+    if (/^\/[A-Za-z]:/.test(p)) p = p.slice(1);   // strip leading / on Windows
+    return p;
+  }
+
+  function updateSelbar() {
+    selcount.textContent = selected.size + ' selected';
+    if (selected.size === 0) {
+      selcmd.value = '';
+      return;
+    }
+    const chars = [...selected]
+      .map(h => String.fromCodePoint(parseInt(h, 16)))
+      .join('')
+      .replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    selcmd.value = 'penstroke export-corel "' + outputDir()
+                 + '" --glyphs "' + chars + '"';
+  }
+
+  svg.querySelectorAll('.cell-bg[data-ch]').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const h = cell.getAttribute('data-ch');
+      if (selected.has(h)) { selected.delete(h); cell.classList.remove('sel'); }
+      else { selected.add(h); cell.classList.add('sel'); }
+      updateSelbar();
+    });
+  });
+
+  document.getElementById('selcopy').addEventListener('click', () => {
+    if (!selcmd.value) return;
+    selcmd.select();
+    navigator.clipboard ? navigator.clipboard.writeText(selcmd.value)
+                        : document.execCommand('copy');
+  });
+  document.getElementById('selclear').addEventListener('click', () => {
+    selected.clear();
+    svg.querySelectorAll('.cell-bg.sel').forEach(c => c.classList.remove('sel'));
+    updateSelbar();
   });
 
   requestAnimationFrame(tick);

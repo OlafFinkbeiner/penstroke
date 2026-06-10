@@ -58,6 +58,8 @@ def main(argv=None):
     p_trace.add_argument('--name', default=None, help='Human-readable font name.')
     p_trace.add_argument('--letters', default=None,
                          help='Characters to trace (default: a-z + A-Z + symbols).')
+    p_trace.add_argument('--all', action='store_true', dest='all_glyphs',
+                         help='Trace EVERY drawable glyph in the font cmap.')
     p_trace.add_argument('--size', type=int, default=384,
                          help='Rasterization pixel size (default: 384).')
     p_trace.add_argument('--word', default='hello world',
@@ -70,6 +72,9 @@ def main(argv=None):
     p_exp.add_argument('output_dir', help='A finished trace output folder.')
     p_exp.add_argument('--csv', default=None,
                        help='CSV path (default: <output_dir>/<font>_edit.csv).')
+    p_exp.add_argument('--glyphs', default=None,
+                       help='Only export these characters (e.g. from the '
+                            'preview selection tool). Default: all.')
     p_exp.add_argument('--size', type=int, default=384,
                        help='Rasterization size used for the trace (default: 384).')
 
@@ -89,25 +94,32 @@ def main(argv=None):
             'demo_word': args.word,
             'verbose': not args.quiet,
         }
-        if args.letters is not None:
+        if args.all_glyphs:
+            from penstroke.editround import font_charset
+            kwargs['letters'] = font_charset(args.ttf)
+            print(f"tracing ALL {len(kwargs['letters'])} drawable glyphs")
+        elif args.letters is not None:
             kwargs['letters'] = args.letters
         trace_font(args.ttf, args.output_dir, **kwargs)
 
     elif args.command == 'export-corel':
-        from penstroke.editround import write_edit_csv
+        from penstroke.editround import write_edit_csv, load_stroke_store
         meta = _load_metadata(args.output_dir)
         ttf = _find_source_font(args.output_dir)
-        letters = ''.join(meta['letters'].keys())
+        letters = args.glyphs if args.glyphs else ''.join(meta['letters'].keys())
+        store = load_stroke_store(args.output_dir)
         csv_path = args.csv or os.path.join(
             args.output_dir, f"{meta['font_name']}_edit.csv")
         n = write_edit_csv(args.output_dir, csv_path, meta['font_name'],
-                           ttf, letters, args.size, safe_filename)
+                           ttf, letters, args.size, safe_filename,
+                           stroke_source=store)
         print(f'wrote {csv_path} ({n} glyph pages)')
         print('Next: in CorelDRAW run the PenstrokeImport macro '
               '(corel/penstroke_corel.bas) and select this CSV.')
 
     elif args.command == 'import-corel':
-        from penstroke.editround import read_edit_csv, resample_widths
+        from penstroke.editround import (read_edit_csv, resample_widths,
+                                         load_stroke_store)
         meta = _load_metadata(args.output_dir)
         ttf = _find_source_font(args.output_dir)
         header, glyphs = read_edit_csv(args.edited_csv)
@@ -119,9 +131,7 @@ def main(argv=None):
                         for ch in meta['letters']}
         unknown_char = chr(0)
 
-        from penstroke.core.rasterize import rasterize_glyph
         edited = {}
-        order = []
         for g in glyphs:
             ch = safe_to_char.get(g['safe'])
             if ch is None and g['char'] != unknown_char:
@@ -131,20 +141,28 @@ def main(argv=None):
             traced = resample_widths(g['strokes'], ttf, ch, args.size)
             if traced:
                 edited[ch] = traced
-                order.append(ch)
+
+        # Exchange ONLY the glyphs present in the CSV; everything else
+        # keeps its current strokes (from the store written at trace /
+        # previous import time).
+        current = load_stroke_store(args.output_dir) or {}
+        current.update(edited)
+
+        from penstroke.core.rasterize import rasterize_glyph
 
         def glyph_source(ch):
-            if ch not in edited:
+            if ch not in current:
                 return None
             mask, m = rasterize_glyph(ttf, ch, size=args.size)
-            return mask, edited[ch], 'edited', m
+            return mask, current[ch], 'edited' if ch in edited else 'kept', m
 
         trace_font(ttf, args.output_dir,
                    font_name=meta['font_name'],
-                   letters=''.join(order),
+                   letters=''.join(current.keys()),
                    size=args.size,
                    glyph_source=glyph_source)
-        print(f'rebuilt {args.output_dir} from {len(edited)} edited glyphs')
+        print(f'rebuilt {args.output_dir}: {len(edited)} glyphs exchanged, '
+              f'{len(current) - len(edited)} kept')
 
 
 if __name__ == '__main__':

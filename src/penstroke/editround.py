@@ -26,7 +26,9 @@ are NOT stored: on import they are re-sampled from the font's distance
 transform, exactly as the tracer does — the user edits pure geometry.
 """
 
+import json
 import os
+import unicodedata
 
 import numpy as np
 
@@ -218,6 +220,66 @@ def _flatten_beziers(segments, step_px=2.0):
     return np.vstack(out)
 
 
+# ---------------------------------------------------------------------------
+# Stroke store: output_dir/strokes.json is the SOURCE OF TRUTH for a
+# font's current decomposition. trace_font writes it; import-corel
+# merges edited glyphs into it; rendering and export-corel read it.
+# This is what makes partial edit rounds accumulate instead of reset.
+# ---------------------------------------------------------------------------
+
+def store_path(output_dir):
+    return os.path.join(output_dir, 'strokes.json')
+
+
+def save_stroke_store(output_dir, traced_map):
+    """Persist {char: [(xs, ys, widths), ...]} as JSON."""
+    data = {}
+    for ch, strokes in traced_map.items():
+        data[ch] = [
+            {'x': [round(float(v), 2) for v in xs],
+             'y': [round(float(v), 2) for v in ys],
+             'w': [round(float(v), 2) for v in ws]}
+            for (xs, ys, ws) in strokes
+        ]
+    with open(store_path(output_dir), 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False)
+
+
+def load_stroke_store(output_dir):
+    """Load {char: [(xs, ys, widths), ...]} or None if absent."""
+    path = store_path(output_dir)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+    out = {}
+    for ch, strokes in data.items():
+        out[ch] = [(np.asarray(s['x'], dtype=float),
+                    np.asarray(s['y'], dtype=float),
+                    np.asarray(s['w'], dtype=float)) for s in strokes]
+    return out
+
+
+def font_charset(ttf_path):
+    """Every drawable character in the font's cmap, sorted by codepoint.
+
+    Control characters and pure whitespace are skipped; glyphs that
+    rasterize to nothing are filtered later by the trace loop itself.
+    """
+    from fontTools.ttLib import TTFont
+    tt = TTFont(ttf_path)
+    cmap = tt.getBestCmap()
+    chars = []
+    for cp in sorted(cmap):
+        ch = chr(cp)
+        if ch.isspace():
+            continue
+        if unicodedata.category(ch).startswith('C'):
+            continue
+        chars.append(ch)
+    return ''.join(chars)
+
+
 def _resample_polyline(pts, n=None, step=None):
     """Resample an Nx2 polyline to `n` points or ~`step` spacing."""
     arr = np.asarray(pts, dtype=float)
@@ -251,9 +313,11 @@ def _bez_records(tag, page, idx, segments):
 
 
 def write_edit_csv(output_dir, csv_path, font_name, ttf_path, letters,
-                   size, safe_filename_fn):
-    """Trace every glyph and write the edit CSV for the Corel macro.
+                   size, safe_filename_fn, stroke_source=None):
+    """Write the edit CSV for the Corel macro.
 
+    Strokes come from `stroke_source` (the stroke store — includes any
+    previous hand edits) when given, otherwise from a fresh trace.
     Strokes and the original font outline are emitted as FITTED cubic
     Beziers (B records): a straight stem is one segment (2 nodes), a
     typical letter 2-6 segments. The stroke fit tolerance exceeds the
@@ -269,8 +333,12 @@ def write_edit_csv(output_dir, csv_path, font_name, ttf_path, letters,
     n_strokes = 0
     for ch in letters:
         try:
-            mask, _skel, _dist, traced, _t, meta = trace_glyph_eulerian(
-                ttf_path, ch, size=size)
+            if stroke_source is not None and ch in stroke_source:
+                traced = stroke_source[ch]
+                _mask, meta = rasterize_glyph(ttf_path, ch, size=size)
+            else:
+                mask, _skel, _dist, traced, _t, meta = trace_glyph_eulerian(
+                    ttf_path, ch, size=size)
         except Exception:
             continue
         if not traced:

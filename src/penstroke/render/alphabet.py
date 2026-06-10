@@ -147,7 +147,8 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
         gx = ox + (glyph_size - glyph_w) / 2
         gy = oy + (glyph_size - glyph_h) / 2
 
-        svg.append(f'<rect class="cell-bg" x="{ox}" y="{oy}" '
+        svg.append(f'<rect class="cell-bg" data-ch="{ord(label):04x}" '
+                   f'x="{ox}" y="{oy}" '
                    f'width="{glyph_size}" height="{glyph_size}" />')
         # XML-escape the label since special chars like '&', '<', '>'
         # would otherwise be parsed as markup

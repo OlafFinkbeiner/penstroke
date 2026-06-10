@@ -254,10 +254,17 @@ Fallback:
 End Function
 
 Private Function GetSavePath(title As String) As String
+    Dim preset As String
+    preset = "penstroke_edited.csv"
+    On Error Resume Next
+    ' Preset the filename from the document title when available.
+    If Not ActiveDocument Is Nothing Then
+        preset = Replace(ActiveDocument.Title, ".cdr", "") & "_edited.csv"
+    End If
     On Error GoTo Fallback
     GetSavePath = CorelScriptTools.GetFileBox( _
-        "CSV files (*.csv)|*.csv|All files (*.*)|*.*", title, 1)
+        "CSV files (*.csv)|*.csv|All files (*.*)|*.*", title, 1, preset)
     Exit Function
 Fallback:
-    GetSavePath = InputBox(title & " - full path for CSV:", "Penstroke")
+    GetSavePath = InputBox(title & " - full path for CSV:", "Penstroke", preset)
 End Function

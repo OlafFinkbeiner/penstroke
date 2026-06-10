@@ -210,6 +210,16 @@ def trace_font(
             print(f"  {ch}: {len(traced)} strokes via {tmpl}, "
                   f"quality {overall:.2f}")
 
+    # 2b. Persist the stroke store — the SOURCE OF TRUTH for this font's
+    # current decomposition. Corel edit rounds merge into this file, so
+    # partial edits accumulate across rounds.
+    try:
+        from penstroke.editround import save_stroke_store
+        save_stroke_store(output_dir,
+                          {ch: t for ch, (m, t) in traced_per_letter.items()})
+    except Exception:
+        pass
+
     # 3. Alphabet grid SVGs
     if grid_items:
         anim_svg, _dur = build_alphabet_svg(grid_items, cols=GRID_COLS,
