@@ -92,8 +92,14 @@ def trace_font(
     license_id: str = "OFL-1.1",
     license_text: Optional[str] = None,
     verbose: bool = True,
+    glyph_source=None,
 ):
     """Process one TTF font end-to-end into a self-contained output folder.
+
+    `glyph_source` optionally overrides where stroke decompositions come
+    from: a callable (ch) -> (mask, traced, tracer_name, meta) or None.
+    Default is the graph tracer. The CorelDRAW edit round-trip uses this
+    to re-render the full output folder from hand-edited centerlines.
 
     Args:
         ttf_path: path to the TTF file to process.
@@ -132,8 +138,12 @@ def trace_font(
         pass
 
 
-    # 1. Copy the original font + license
-    shutil.copy(ttf_path, os.path.join(source_dir, os.path.basename(ttf_path)))
+    # 1. Copy the original font + license (skip if re-rendering in place
+    #    and the source font already lives in this output folder)
+    font_dest = os.path.join(source_dir, os.path.basename(ttf_path))
+    if not (os.path.exists(font_dest)
+            and os.path.samefile(ttf_path, font_dest)):
+        shutil.copy(ttf_path, font_dest)
     if license_text:
         with open(os.path.join(source_dir, 'LICENSE.txt'), 'w', encoding='utf-8') as f:
             f.write(license_text)
@@ -146,10 +156,18 @@ def trace_font(
     baseline_y = None
     upem = None
 
-    for ch in letters:
-        try:
+    if glyph_source is None:
+        def glyph_source(ch):
             mask, _skel, _dist, traced, tmpl, meta = trace_glyph_eulerian(
                 ttf_path, ch, size=size)
+            return mask, traced, tmpl, meta
+
+    for ch in letters:
+        try:
+            result = glyph_source(ch)
+            if result is None:
+                continue
+            mask, traced, tmpl, meta = result
         except Exception as e:
             if verbose:
                 print(f"  {ch}: ERROR {e}")
