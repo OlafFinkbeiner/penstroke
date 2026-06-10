@@ -60,8 +60,7 @@ def main(argv=None):
                          help='Explicit characters to trace (overrides '
                               '--charset).')
     p_trace.add_argument('--charset', default='latin',
-                         choices=['ascii', 'latin', 'latin-ext',
-                                  'cyrillic', 'all'],
+                         choices=['ascii', 'latin'],
                          help='Charset preset, intersected with the font '
                               "cmap (default: latin = ASCII + Latin-1).")
     p_trace.add_argument('--size', type=int, default=384,
