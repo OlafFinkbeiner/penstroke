@@ -1,21 +1,22 @@
 Attribute VB_Name = "PenstrokeRoundtrip"
-' Penstroke <-> CorelDRAW round-trip macros.
+' Penstroke <-> CorelDRAW round-trip macros (CSV format v2).
 '
 ' PenstrokeImport:
 '   Reads an edit CSV (written by `penstroke export-corel`) and builds
 '   a fresh document: one page per glyph (all pages canvas-size, named
-'   after the glyph), the original letterform as a locked pale-yellow
-'   underlay, and every pen stroke as a named curve "s01", "s02", ...
-'   Edit freely: reshape nodes, delete strokes, draw new ones. The
-'   stroke ORDER for the animation is the object NAME - rename to
-'   reorder, name new strokes "s05" etc. Colors don't matter.
+'   after the glyph), the original font OUTLINE as a locked pale-yellow
+'   underlay (one combined shape per page, so counters are holes), and
+'   every pen stroke as a smooth Bezier curve named "s01", "s02", ...
+'   Strokes arrive FITTED: a straight stem is 2 nodes, letters 2-6
+'   segments. Edit freely. The stroke ORDER for the animation is the
+'   object NAME - rename to reorder, name new strokes "s05" etc.
 '
 ' PenstrokeExportEdits:
-'   Walks every page, samples every curve named "s*" and writes the
-'   same CSV format back. Feed that to `penstroke import-corel`.
+'   Walks every page, samples every curve named "s*" and writes point
+'   records back. Feed that CSV to `penstroke import-corel`.
 '
 ' Install: Tools > Macros > Macro Editor, File > Import File... this
-' .bas - or just Tools > Macros > Run Macro after opening it.
+' .bas - then Tools > Macros > Run Macro.
 '
 ' Coordinates: the CSV stores pixels with y pointing DOWN; Corel pages
 ' have y pointing UP, so both macros flip y. 1 pixel = 1 point.
@@ -42,17 +43,16 @@ Public Sub PenstrokeImport()
     Dim canvasW As Double, canvasH As Double
     Dim curPage As Integer: curPage = -1
     Dim pg As Page
-    Dim lyr As Layer
-    Dim underLyr As Layer
 
-    ' Geometry accumulators: we buffer points per (page, kind, index)
-    ' and flush a curve whenever the key changes (records are written
-    ' grouped, so a simple previous-key check suffices).
-    Dim prevKey As String: prevKey = ""
-    Dim bufX() As Double, bufY() As Double, bufN As Long
-    ReDim bufX(0 To 100000): ReDim bufY(0 To 100000)
-    bufN = 0
-    Dim prevKind As String, prevIdx As Long, prevPage As Integer
+    ' Stroke curve being assembled (one curve per stroke).
+    Dim sCrv As Curve, sSp As SubPath
+    Dim sKey As String: sKey = ""
+    Dim sIdx As Long
+    ' Underlay curve being assembled (ONE curve per page, one closed
+    ' subpath per outline contour -> counters become holes).
+    Dim uCrv As Curve, uSp As SubPath
+    Dim uPolyIdx As Long: uPolyIdx = -1
+    Dim haveU As Boolean: haveU = False
 
     Dim line As String
     Do While Not EOF(fnum)
@@ -70,40 +70,61 @@ Public Sub PenstrokeImport()
             doc.MasterPage.SizeHeight = canvasH
 
         Case "G"
-            FlushBuffer doc, prevPage, prevKind, prevIdx, bufX, bufY, bufN, canvasH
-            prevKey = ""
-            Dim pageIdx As Integer: pageIdx = CInt(parts(1))
+            FlushStroke doc, sCrv, sIdx: sKey = ""
+            FlushUnderlay doc, uCrv, uSp, haveU: uPolyIdx = -1
             If curPage < 0 Then
                 Set pg = doc.Pages(1)
             Else
                 Set pg = doc.AddPages(1)
             End If
-            curPage = pageIdx
+            curPage = CInt(parts(1))
             pg.SizeWidth = canvasW
             pg.SizeHeight = canvasH
             pg.Name = parts(3)
             pg.Activate
 
-        Case "U", "S"
-            Dim key As String
-            key = parts(0) & "|" & parts(1) & "|" & parts(2)
-            If key <> prevKey And prevKey <> "" Then
-                FlushBuffer doc, prevPage, prevKind, prevIdx, bufX, bufY, bufN, canvasH
+        Case "B"
+            ' B;page;kind;idx;x0;y0;c1x;c1y;c2x;c2y;x1;y1
+            Dim kind As String: kind = parts(2)
+            Dim idx As Long: idx = CLng(parts(3))
+            Dim x0 As Double, y0 As Double
+            Dim c1x As Double, c1y As Double
+            Dim c2x As Double, c2y As Double
+            Dim x1 As Double, y1 As Double
+            x0 = Val(parts(4)): y0 = canvasH - Val(parts(5))
+            c1x = Val(parts(6)): c1y = canvasH - Val(parts(7))
+            c2x = Val(parts(8)): c2y = canvasH - Val(parts(9))
+            x1 = Val(parts(10)): y1 = canvasH - Val(parts(11))
+
+            If kind = "S" Then
+                Dim key As String
+                key = parts(1) & "|" & parts(3)
+                If key <> sKey Then
+                    FlushStroke doc, sCrv, sIdx
+                    Set sCrv = doc.CreateCurve
+                    Set sSp = sCrv.CreateSubPath(x0, y0)
+                    sKey = key
+                    sIdx = idx
+                End If
+                sSp.AppendCurveSegment2 x1, y1, c1x, c1y, c2x, c2y
+            Else   ' "U"
+                If Not haveU Then
+                    Set uCrv = doc.CreateCurve
+                    haveU = True
+                    uPolyIdx = -1
+                End If
+                If idx <> uPolyIdx Then
+                    If uPolyIdx >= 0 Then uSp.Closed = True
+                    Set uSp = uCrv.CreateSubPath(x0, y0)
+                    uPolyIdx = idx
+                End If
+                uSp.AppendCurveSegment2 x1, y1, c1x, c1y, c2x, c2y
             End If
-            If key <> prevKey Then
-                prevKey = key
-                prevKind = parts(0)
-                prevPage = CInt(parts(1))
-                prevIdx = CLng(parts(2))
-                bufN = 0
-            End If
-            bufX(bufN) = Val(parts(3))
-            bufY(bufN) = Val(parts(4))
-            bufN = bufN + 1
         End Select
 NextLine:
     Loop
-    FlushBuffer doc, prevPage, prevKind, prevIdx, bufX, bufY, bufN, canvasH
+    FlushStroke doc, sCrv, sIdx
+    FlushUnderlay doc, uCrv, uSp, haveU
     Close #fnum
 
     doc.Pages(1).Activate
@@ -113,39 +134,32 @@ NextLine:
 End Sub
 
 
-Private Sub FlushBuffer(doc As Document, pageIdx As Integer, _
-                        kind As String, idx As Long, _
-                        bufX() As Double, bufY() As Double, _
-                        ByRef bufN As Long, canvasH As Double)
-    If bufN < 2 Then bufN = 0: Exit Sub
-
-    Dim crv As Curve
-    Set crv = doc.CreateCurve
-    Dim sp As SubPath
-    ' Flip y: CSV is y-down, Corel pages are y-up.
-    Set sp = crv.CreateSubPath(bufX(0), canvasH - bufY(0))
-    Dim i As Long
-    For i = 1 To bufN - 1
-        sp.AppendLineSegment bufX(i), canvasH - bufY(i)
-    Next i
-
+Private Sub FlushStroke(doc As Document, ByRef sCrv As Curve, sIdx As Long)
+    If sCrv Is Nothing Then Exit Sub
     Dim sh As Shape
-    Set sh = doc.ActiveLayer.CreateCurve(crv)
+    Set sh = doc.ActiveLayer.CreateCurve(sCrv)
+    sh.Name = "s" & Format$(sIdx + 1, "00")
+    sh.Fill.ApplyNoFill
+    sh.Outline.SetProperties 2#
+    sh.Outline.Color.RGBAssign 30, 30, 30
+    Set sCrv = Nothing
+End Sub
 
-    If kind = "U" Then
-        sp.Closed = True
-        sh.Name = UNDERLAY_NAME
-        sh.Fill.UniformColor.RGBAssign 253, 230, 138
-        sh.Outline.SetNoOutline
-        sh.OrderToBack
-        sh.Locked = True
-    Else
-        sh.Name = "s" & Format$(idx + 1, "00")
-        sh.Fill.ApplyNoFill
-        sh.Outline.SetProperties 2#
-        sh.Outline.Color.RGBAssign 30, 30, 30
-    End If
-    bufN = 0
+
+Private Sub FlushUnderlay(doc As Document, ByRef uCrv As Curve, _
+                          ByRef uSp As SubPath, ByRef haveU As Boolean)
+    If Not haveU Then Exit Sub
+    If Not uSp Is Nothing Then uSp.Closed = True
+    Dim sh As Shape
+    Set sh = doc.ActiveLayer.CreateCurve(uCrv)
+    sh.Name = UNDERLAY_NAME
+    sh.Fill.UniformColor.RGBAssign 253, 230, 138
+    sh.Outline.SetNoOutline
+    sh.OrderToBack
+    sh.Locked = True
+    Set uCrv = Nothing
+    Set uSp = Nothing
+    haveU = False
 End Sub
 
 
@@ -171,8 +185,8 @@ Public Sub PenstrokeExportEdits()
     Open csvPath For Output As #fnum
     ' Glyph identity travels via the page NAME (set at import); the
     ' char hex is not known to Corel, so we write 0000 and let the
-    ' Python side resolve the char from the safe name via its manifest.
-    Print #fnum, "H;penstroke-edit;1;" & doc.Title & ";" & _
+    ' Python side resolve the char from the page name.
+    Print #fnum, "H;penstroke-edit;2;" & doc.Title & ";" & _
                  Format$(canvasW, "0") & ";" & Format$(canvasH, "0") & ";0"
 
     Dim pg As Page, sh As Shape
