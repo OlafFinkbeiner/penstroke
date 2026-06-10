@@ -1,12 +1,12 @@
-"""Geometric stroke decomposition — the fallback for characters without
-a Hershey template (digits, punctuation, non-Latin scripts).
+"""Early geometric stroke-decomposition helpers.
 
-This is the "open-ended" approach: given just a skeleton graph, figure out
-how many strokes are in the glyph and what each one is. It relies on
-tangent-continuity heuristics at junctions and produces correct results
-for letters with simple topology, but fails on tricky ones (R, X with
-parallel splits, A's inner triangle). The Hershey-template approach in
-the `templates/` package supersedes this whenever a template is available.
+Most of this module's decomposition logic predates the junction-first
+tracer (penstroke.tracer) and is no longer on the production path. The
+parts that ARE load-bearing for the tracer:
+
+  - tangent_at: unit tangent at a path end, k-pixel baseline
+  - trace_closed_loops: walk pure-cycle skeleton components ('o', 'O')
+    that produce no graph nodes
 
 Pipeline:
   decompose_strokes  →  for each edge incident to a junction, decide which

@@ -2,7 +2,7 @@
 
 For each letter we collect:
   - the metrics dict from `assess_letter`
-  - the template used (rowmans/cursive/etc.)
+  - the tracer used
   - the stroke count
 
 The report groups letters into "clean", "minor issues", and "significant

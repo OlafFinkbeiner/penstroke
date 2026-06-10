@@ -63,8 +63,7 @@ glyph's skeleton as a graph and lets the topology decide the strokes:
 
 No stroke-order database, no per-letter rules, no templates: a font
 never seen before decomposes correctly because the rules are pure
-geometry. The legacy Hershey-template tracer is still available via
-`--tracer template`.
+geometry.
 
 ## Output structure
 
@@ -109,16 +108,13 @@ See [CLAUDE.md](CLAUDE.md) for the full module-by-module breakdown.
 Short version:
 
 - `src/penstroke/core/` — rasterize, skeletonize, graph, outline, smoothing
-- `src/penstroke/templates/eulerian.py` — EPST, the default junction-first
-  graph tracer
-- `src/penstroke/templates/` (rest) — legacy Hershey-template tracer
+- `src/penstroke/tracer.py` — the junction-first graph tracer
 - `src/penstroke/render/` — SVG, alphabet, diagnostics, word, Houdini outputs
 - `src/penstroke/quality/` — coverage + OCR + cascade QA + report assembly
 - `src/penstroke/pipeline.py` — top-level `trace_font()` entry
 - `scripts/` — batch runners
-- `viewers/` — HTML templates
 - `tests/` — smoke tests, fixtures
-- `design/` — EPST algorithm spec + batch QA catalog
+- `design/` — active design specs + current QA catalog
 
 ## Testing
 
@@ -139,10 +135,9 @@ see `tests/fixtures/LICENSE-*.txt` for each font's attribution.
 
 ## Acknowledgments
 
-The legacy fallback tracer is built around the
+The original prototype was built around the
 [Hershey font catalog](https://en.wikipedia.org/wiki/Hershey_fonts)
-by A.V. Hershey at the U.S. Naval Weapons Laboratory (1967), now
-public domain. The Hershey templates were the original approach and
-remain available via `--tracer template`; the default tracer has since
-moved to a pure graph-theoretic decomposition that needs no stroke
-templates at all.
+(A.V. Hershey, U.S. Naval Weapons Laboratory, 1967, public domain) as
+a stroke-order prior. The project has since moved to a pure
+graph-theoretic decomposition that needs no stroke templates; the
+Hershey-based tracer lives on only in the git history.

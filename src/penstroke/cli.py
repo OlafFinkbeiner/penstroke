@@ -36,13 +36,6 @@ def main(argv=None):
                          help='Word for word_demo.html (default: "hello world").')
     p_trace.add_argument('--quiet', action='store_true',
                          help='Suppress per-letter progress output.')
-    p_trace.add_argument('--tracer', choices=['template', 'eulerian'],
-                         default='eulerian',
-                         help='Stroke-decomposition algorithm. "eulerian" '
-                              '(default) runs the graph-theoretic '
-                              'Chinese-Postman + Hierholzer tracer (EPST). '
-                              '"template" is the legacy Hershey-template '
-                              'tracer, kept as a fallback.')
 
     args = parser.parse_args(argv)
 
@@ -52,7 +45,6 @@ def main(argv=None):
             'size': args.size,
             'demo_word': args.word,
             'verbose': not args.quiet,
-            'tracer': args.tracer,
         }
         if args.letters is not None:
             kwargs['letters'] = args.letters

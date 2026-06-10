@@ -13,9 +13,8 @@ The current metrics:
                 large parts of the glyph (e.g., the bowl of an 'a' got
                 skipped). Threshold ~0.85 catches obvious omissions.
 
-  stroke_count: did the produced stroke count match the Hershey template's
-                stroke count? When they disagree, it usually means the
-                template didn't apply cleanly.
+  stroke_count: did the produced stroke count match an expected count
+                (when one is supplied, e.g. from an AI-derived spec)?
 
   has_strokes:  did we produce ANY strokes? (catches total trace failures)
 """

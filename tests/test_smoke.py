@@ -27,45 +27,47 @@ def test_imports():
     import penstroke.core.rasterize
     import penstroke.core.skeleton
     import penstroke.core.graph
+    import penstroke.core.outline
     import penstroke.core.strokes
     import penstroke.core.smoothing
-    import penstroke.templates.hershey
-    import penstroke.templates.topology
-    import penstroke.templates.selection
-    import penstroke.templates.trace
+    import penstroke.tracer
     import penstroke.render.svg
     import penstroke.render.glyph
     import penstroke.render.alphabet
+    import penstroke.render.diagnostic
     import penstroke.render.word
     import penstroke.render.houdini
     import penstroke.quality.metrics
+    import penstroke.quality.cascade
     import penstroke.quality.report
     import penstroke.pipeline
     print("✓ all modules import")
 
 
 def test_trace_glyph_basic():
-    """trace_glyph produces sane output for a handful of letters.
+    """The tracer produces sane output for a handful of letters.
 
-    Uses min/max bounds rather than exact equality because the post-trace
-    fix step (templates/fixes.py) legitimately adds strokes for features
-    the rigid template walker doesn't visit (Caveat 'a' has an exit flick;
-    cursive fonts have ligature tails). We assert the count is in a
-    sensible range.
+    Uses min/max bounds rather than exact equality: stroke counts can
+    shift by ±1 as decomposition details evolve, and that's fine — the
+    assertions catch gross breakage (no strokes, letter exploded into
+    fragments), not tuning drift.
     """
-    from penstroke.templates.trace import trace_glyph
+    from penstroke.tracer import trace_glyph_eulerian
     cases = [
-        ('X', 2, 4),   # two diagonals + maybe small serifs
-        ('a', 1, 3),   # single-story 'a' core + optional exit flick
-        ('o', 1, 1),   # closed loop, no spurs possible
+        ('X', 1, 3),   # two crossing diagonals (1 chain if continuation pairs)
+        ('a', 1, 3),   # bowl + spine
+        ('o', 1, 1),   # closed loop
+        ('i', 2, 3),   # stem + tittle (dot drawn last)
+        ('m', 1, 4),   # cursive wave
     ]
     for ch, lo, hi in cases:
-        mask, skel, dist, traced, tmpl, meta = trace_glyph(CAVEAT, ch, size=384)
+        mask, skel, dist, traced, tracer_name, meta = trace_glyph_eulerian(
+            CAVEAT, ch, size=384)
         assert lo <= len(traced) <= hi, \
             f"{ch}: expected {lo}-{hi} strokes, got {len(traced)}"
         assert meta['canvas_w'] > 0
         assert meta['baseline_y'] > 0
-        print(f"✓ {ch}: {len(traced)} strokes via {tmpl}")
+        print(f"✓ {ch}: {len(traced)} strokes via {tracer_name}")
 
 
 def test_full_pipeline_writes_expected_files():
@@ -120,10 +122,10 @@ def test_glyph_svgs_have_metadata_attributes():
 
 def test_houdini_export():
     """Houdini JSON has the right structure."""
-    from penstroke.templates.trace import trace_glyph
+    from penstroke.tracer import trace_glyph_eulerian
     from penstroke.render.houdini import trace_to_dict
 
-    mask, _, _, traced, _, meta = trace_glyph(CAVEAT, 'A', size=384)
+    mask, _, _, traced, _, meta = trace_glyph_eulerian(CAVEAT, 'A', size=384)
     d = trace_to_dict('A', traced, meta, font_name='Caveat')
     assert d['letter'] == 'A'
     assert d['font'] == 'Caveat'

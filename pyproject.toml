@@ -19,7 +19,6 @@ dependencies = [
     "Pillow>=9.4",
     "fonttools>=4.40",
     "networkx>=3.0",
-    "Hershey-Fonts>=2.1",
 ]
 
 [project.optional-dependencies]

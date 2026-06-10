@@ -7,17 +7,16 @@ Each letter is decomposed into individual pen strokes and re-rendered
 as animated SVG that preserves the target font's variable-width
 calligraphic character.
 
-The core insight (current architecture): **the glyph's skeleton is a
-graph, and stroke decomposition is a graph problem.** The default
-tracer (EPST, `templates/eulerian.py`) analyses every junction of the
-skeleton multigraph globally — pairing edge-ends that continue
-smoothly into each other, terminating strokes where the geometry
-turns sharply — then mechanically follows those pairings into chains.
-One chain = one natural pen stroke. No stroke templates, no per-letter
-rules, no order-dependent decisions.
+The core insight: **the glyph's skeleton is a graph, and stroke
+decomposition is a graph problem.** The tracer (`src/penstroke/tracer.py`)
+analyses every junction of the skeleton multigraph globally — pairing
+edge-ends that continue smoothly into each other, terminating strokes
+where the geometry turns sharply — then mechanically follows those
+pairings into chains. One chain = one natural pen stroke. No stroke
+templates, no per-letter rules, no order-dependent decisions.
 
-The original approach (Hershey stroke-font templates as priors) is
-retained as a fallback via `--tracer template`.
+(The original Hershey-template approach was removed in v0.2; it lives
+in git history if ever needed.)
 
 ## Layout
 
@@ -41,14 +40,8 @@ src/penstroke/
 │   │                      trace_closed_loops helpers
 │   └── smoothing.py       spline fit, per-point widths, OU-process wobble, taper
 │
-├── templates/
-│   ├── eulerian.py        EPST — the DEFAULT tracer. Junction-first graph
-│   │                      decomposition. See module docstring for pipeline.
-│   ├── trace.py           Legacy Hershey-template tracer (--tracer template)
-│   ├── hershey.py         Load and cache Hershey font data
-│   ├── topology.py        Skeleton/template topological fingerprints
-│   ├── selection.py       Per-letter Hershey-variant strategy (legacy path)
-│   └── scripts.py         Unicode→Hershey mapping for Greek (legacy path)
+├── tracer.py              THE tracer — junction-first graph decomposition.
+│                          See module docstring for the full pipeline.
 │
 ├── render/                Output formats
 │   ├── svg.py             Path-building primitives (ribbon polygon, centerline)
@@ -68,12 +61,12 @@ src/penstroke/
     ├── ocr.py             Tesseract-based recognition check
     └── report.py          Assemble metrics into report.md and metadata.json
 
-design/                    Algorithm documentation
-├── graph_tracer_spec.json EPST design (multi-lens synthesis)
-└── epst_batch_qa.json     6-font batch QA: issue classes + per-font verdicts
+design/                    Active design docs
+├── qa_cleanup_spec.json   QA/cleanup architecture (multi-lens synthesis)
+├── epst_batch_qa_v2.json  Current 6-font QA: issue classes + verdicts
+└── cascade_results_v2.json Deterministic detector findings + calibration notes
 
 scripts/batch_google_fonts.py   Batch runner (edit FONTS list at top)
-viewers/wrapper_with_speed.html Original viewer template (source of render/viewer_template.html)
 tests/test_smoke.py             End-to-end smoke tests
 tests/fixtures/caveat.ttf       OFL-licensed test font
 ```
@@ -83,8 +76,7 @@ tests/fixtures/caveat.ttf       OFL-licensed test font
 ### Trace one font
 
 ```bash
-penstroke trace path/to/MyFont.ttf output/myfont/            # EPST (default)
-penstroke trace path/to/MyFont.ttf output/myfont/ --tracer template  # legacy
+penstroke trace path/to/MyFont.ttf output/myfont/
 ```
 
 Key outputs: `preview.html` (interactive viewer), `diagnostics/*.png`
@@ -120,15 +112,15 @@ class: diagnose the mechanism, survey how many other letters share it,
 fix the mechanism. Where to look:
 
 - Stroke decomposition wrong (too many/few strokes, wrong split):
-  `templates/eulerian.py::analyze_junctions` (the pairing threshold
+  `tracer.py::analyze_junctions` (the pairing threshold
   `MAX_CONTINUATION_TURN_DEG`) and `build_chains`.
 - Strokes wander off the ink / strays: hygiene passes in
-  `templates/eulerian.py::build_annotated_graph` (scrambled-path
+  `tracer.py::build_annotated_graph` (scrambled-path
   repair, duplicate removal) and
   `core/graph.py::collapse_parallel_edges`.
 - Wrong direction/order: `_orient_walk_for_writing`,
-  `_orient_clockwise_if_closed`, `order_all_walks` in eulerian.py.
-- Missing dots/tittles: `_split_mask_dots` in eulerian.py.
+  `_orient_clockwise_if_closed`, `order_all_walks` in tracer.py.
+- Missing dots/tittles: `_split_mask_dots` in tracer.py.
 - Skeleton itself wrong: `core/skeleton.py` (pruning) — but check the
   graph hygiene passes first.
 
@@ -203,10 +195,9 @@ fix the mechanism. Where to look:
    terminals (an on-ink clip pass would be a cheap safety net).
 3. **Houdini JSON export not wired into the pipeline**
    (`render/houdini.py` exists; `trace_font` doesn't call it).
-4. **Non-Latin scripts**: Greek works via the legacy tracer's Hershey
-   mapping; EPST is script-agnostic by construction but untested on
-   Greek/Cyrillic/Hebrew. The geometric fallback in `core/strokes.py`
-   covers scripts without templates.
+4. **Non-Latin scripts**: the tracer is script-agnostic by construction
+   (pure geometry) but untested on Greek/Cyrillic/Hebrew since the
+   Hershey-based Greek path was removed in v0.2.
 5. **The AI-spec workflow is manual.** `glyphs_raw/` renders
    automatically, but producing `spec.json` requires running the
    vision-agent fan-out by hand (in-session workflow). Could become a
@@ -221,7 +212,6 @@ All Python, `pip install -e .`:
 - `Pillow` — TTF rasterization + diagnostic PNGs
 - `fonttools` — TTF metrics + outline extraction
 - `networkx` — skeleton multigraph
-- `Hershey-Fonts` — legacy tracer's template data
 
 Optional: `pytesseract` + tesseract binary for the OCR metric
 (skipped if unavailable).

@@ -385,20 +385,15 @@ def run_cascade(char, traced, outlines=None, spec_entry=None, mask=None):
     return issues
 
 
-def run_cascade_on_output(output_dir, font_path, letters, size=384,
-                          tracer='eulerian'):
+def run_cascade_on_output(output_dir, font_path, letters, size=384):
     """Run cascade across a finished trace output directory.
 
     Reads spec.json if present, re-extracts outlines for every letter,
-    re-traces with the SAME tracer the pipeline default uses (since
-    trace results aren't saved in raw form). Returns a dict
-    char -> [Issue, ...].
+    re-traces (since trace results aren't saved in raw form). Returns a
+    dict char -> [Issue, ...].
     """
     from penstroke.core.outline import extract_outlines
-    if tracer == 'eulerian':
-        from penstroke.templates.eulerian import trace_glyph_eulerian as _trace
-    else:
-        from penstroke.templates.trace import trace_glyph as _trace
+    from penstroke.tracer import trace_glyph_eulerian as _trace
 
     spec = None
     spec_path = os.path.join(output_dir, 'spec.json')
