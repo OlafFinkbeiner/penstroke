@@ -111,7 +111,134 @@ def _reorder_scrambled_path(path, u):
     return ordered
 
 
-def build_annotated_graph(skel, dist_map):
+def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
+    """Remove leaf branches that the pen doesn't need — threshold-free.
+
+    The medial axis transform reconstructs the glyph exactly as the
+    union of disks centred on skeleton pixels with radius = distance
+    transform. Every branch therefore "explains" some ink, and the
+    discriminator between a REAL feature and centreline scaffolding is
+    causal, not geometric:
+
+      - A serif / arm / tail branch explains its own ink. Erase it and
+        the reconstruction loses that whole feature (hundreds of px²).
+      - A flat-cap corner branch explains almost nothing: the parent
+        spine's terminal disk already covers virtually the entire cap;
+        the corner branch adds only sub-pixel corner slivers (the
+        boundary is gaussian-smoothed upstream, so the true corners
+        are rounded off anyway).
+
+    Test per leaf edge: compute the ink covered ONLY by this branch's
+    disks and by no other skeleton pixel's disk, then compare against
+    the GEOMETRIC ceiling of what cap corners can contribute.
+
+    The floor is derived, not tuned: for a square-capped stroke of
+    half-width r, the cap ink that the spine's terminal disk cannot
+    cover is at most (2 − π/2)·r² ≈ 0.43·r² (rectangle area 2r·r minus
+    the inscribed half-disk πr²/2). Any leaf whose exclusive ink is
+    ≤ 0.5·r² is therefore attributable to cap-corner geometry. A real
+    protruding feature (serif, flick, arm) carries ink BEYOND the
+    parent stroke's own disk — empirically ≥ 1.5·r² — so the two
+    populations are separated by the theorem, not by a tuned knob.
+    r is the distance-transform value at the junction the leaf hangs
+    off (the parent's local half-width).
+
+    Pruning can expose new leaves (a junction dropping to degree 1),
+    so iterate to a fixpoint, capped at `max_passes`.
+    """
+    CAP_CORNER_COEFF = 0.5          # ≥ (2 − π/2) ≈ 0.43, the square-cap
+                                    # uncovered-area bound, with slack
+    ABS_FLOOR_PX2 = 9.0             # sub-visible at render scale; guards
+                                    # hairline strokes where r² → 0
+    COVER_EPS = 0.5                 # pixel-quantisation slack on disk radii
+
+    H, W = mask.shape
+
+    def all_skel_pixels():
+        pts = set()
+        for _, _, d in G.edges(data=True):
+            pts.update(map(tuple, d['path']))
+        return pts
+
+    for _ in range(max_passes):
+        pruned_any = False
+        skel_pts = all_skel_pixels()
+        # Deterministic edge order.
+        edges = sorted(G.edges(keys=True),
+                       key=lambda e: (tuple(e[0]), tuple(e[1]), e[2]))
+        for (u, v, k) in edges:
+            if not G.has_edge(u, v, key=k):
+                continue
+            deg_u, deg_v = G.degree(u), G.degree(v)
+            if deg_u != 1 and deg_v != 1:
+                continue   # not a leaf branch
+            path = G[u][v][k]['path']
+            if len(path) < 2:
+                continue
+            # Branch pixels, excluding the junction-side endpoint pixel
+            # (it's shared with the rest of the skeleton).
+            jct = v if deg_u == 1 else u
+            branch = [tuple(p) for p in path if tuple(p) != tuple(jct)]
+            if not branch:
+                continue
+            rest = skel_pts.difference(branch)
+            if not rest:
+                continue   # last branch of a component — never prune
+            barr = np.asarray(branch, dtype=float)
+            br = np.array([dist_map[int(p[0]), int(p[1])] for p in branch])
+            # Local window around the branch's disks.
+            r_max = float(br.max()) + COVER_EPS
+            y0 = max(0, int(barr[:, 0].min() - r_max - 1))
+            y1 = min(H, int(barr[:, 0].max() + r_max + 2))
+            x0 = max(0, int(barr[:, 1].min() - r_max - 1))
+            x1 = min(W, int(barr[:, 1].max() + r_max + 2))
+            yy, xx = np.mgrid[y0:y1, x0:x1]
+            qpts = np.column_stack([yy.ravel(), xx.ravel()]).astype(float)
+            ink_q = mask[y0:y1, x0:x1].ravel().astype(bool)
+            # Covered by the branch's disks?
+            d_branch = np.min(
+                np.hypot(qpts[:, None, 0] - barr[None, :, 0],
+                         qpts[:, None, 1] - barr[None, :, 1])
+                - br[None, :], axis=1)
+            in_branch = d_branch <= COVER_EPS
+            cand = ink_q & in_branch
+            if not cand.any():
+                G.remove_edge(u, v, key=k)
+                pruned_any = True
+                continue
+            # Covered by the REST of the skeleton? Only rest-pixels near
+            # the window matter.
+            rarr = np.asarray(sorted(rest), dtype=float)
+            near = ((rarr[:, 0] >= y0 - r_max - dist_map.max()) &
+                    (rarr[:, 0] <= y1 + r_max + dist_map.max()) &
+                    (rarr[:, 1] >= x0 - r_max - dist_map.max()) &
+                    (rarr[:, 1] <= x1 + r_max + dist_map.max()))
+            rarr = rarr[near]
+            if len(rarr) == 0:
+                continue
+            rr = np.array([dist_map[int(p[0]), int(p[1])] for p in rarr])
+            qc = qpts[cand]
+            d_rest = np.min(
+                np.hypot(qc[:, None, 0] - rarr[None, :, 0],
+                         qc[:, None, 1] - rarr[None, :, 1])
+                - rr[None, :], axis=1)
+            exclusive_px2 = float((d_rest > COVER_EPS).sum())
+            # Floor scales with the parent's local half-width at the
+            # junction — see the cap-corner bound in the docstring.
+            r_j = float(dist_map[int(jct[0]), int(jct[1])])
+            floor = max(ABS_FLOOR_PX2, CAP_CORNER_COEFF * r_j * r_j)
+            if exclusive_px2 <= floor:
+                G.remove_edge(u, v, key=k)
+                pruned_any = True
+        # Drop nodes that lost all their edges.
+        for n in [n for n in G.nodes if G.degree(n) == 0]:
+            G.remove_node(n)
+        if not pruned_any:
+            break
+    return G
+
+
+def build_annotated_graph(skel, dist_map, mask=None):
     """Build the cleaned skeleton multigraph with arc-length + tangent edge
     annotations.
 
@@ -123,8 +250,8 @@ def build_annotated_graph(skel, dist_map):
       - d['retrace']: False initially; set True by T-join repair if this
         edge was duplicated to fix parity
 
-    Hygiene applied before annotation (both target real defects observed
-    from skeleton_to_graph + merge_nearby_junctions output):
+    Hygiene applied before annotation (each targets a real observed
+    defect class):
       1. Scrambled-path repair: an edge whose pixel ordering is jumbled
          (arc length far exceeding what an 8-connected chain allows)
          is re-ordered via nearest-neighbour walk. Without this the
@@ -134,6 +261,10 @@ def build_annotated_graph(skel, dist_map):
          skeleton_to_graph emits some edges twice; the duplicates
          corrupt degree parity (every node looks even) and make the
          Eulerian tracer retrace every line.
+      3. Redundant-leaf pruning (requires `mask`): leaf branches whose
+         ink contribution is already covered by the rest of the
+         skeleton are centerline scaffolding, not features — see
+         prune_redundant_leaves.
     """
     G = skeleton_to_graph(skel)
     G = merge_nearby_junctions(G, max_dist=22)
@@ -155,6 +286,10 @@ def build_annotated_graph(skel, dist_map):
             seen_sets[sig] = (u, v, k)
     for (u, v, k) in to_drop:
         G.remove_edge(u, v, key=k)
+
+    # --- Hygiene pass 3: prune redundant leaf branches ---------------
+    if mask is not None:
+        prune_redundant_leaves(G, dist_map, mask)
 
     G = collapse_parallel_edges(G, dist_map)
     for u, v, k, d in list(G.edges(keys=True, data=True)):
@@ -582,7 +717,8 @@ def trace_glyph_eulerian(font_path, char, size=384, seed=1):
         # graph builder doesn't see the tittle pixels.
         skel, dist = skeletonize(main_mask)
 
-    G = build_annotated_graph(skel, dist)
+    ink = main_mask if dot_taps else mask
+    G = build_annotated_graph(skel, dist, mask=ink)
     components, orphan_loops = split_components(G, skel)
 
     # Junction-first decomposition: analyse ALL junctions globally
