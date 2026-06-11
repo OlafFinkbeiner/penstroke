@@ -156,6 +156,18 @@ chosen rep's packed prims.
       bundles with QA sheets). Warm full-graph re-cook ≈ 7 s incl.
       Houdini startup. Validated: 8-font cook, then full 81-bundle
       corpus from output/handwriting.
+- [x] GUI scene for the full Google Fonts run: all config (roots,
+      filters, charset, output dirs) is spare parms on
+      /obj/penstroke_tops; the saved penstroke_tops.hip is
+      self-contained (cold-load verified: 355 HANDWRITING work items,
+      92 cached, 263 to trace from the D:\google-fonts sparse clone).
+      Trace stage hardened along the way: commands BAKED per item
+      (this node expands no @attrib tokens, verified empirically),
+      run_trace.cmd scrubs PYTHONPATH/PYTHONHOME (PDG jobs inherit
+      Houdini's → SRE module mismatch in the venv), --name passed so
+      trace identity = folder basename (no duplicate bundles from
+      TTF-stem names), embedded callbacks import hou explicitly
+      (absent in cold-loaded generate callbacks).
 - [ ] Preview selection tool: save `selections/*.json` (paste path
       stays as fallback) + make_subset/merge_edits TOPs stages
       (file-handshake Corel round-trip).

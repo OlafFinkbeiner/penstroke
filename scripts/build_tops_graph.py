@@ -2,26 +2,34 @@
 
     hython scripts/build_tops_graph.py [--roots DIR ...] [--limit N]
         [--name RE] [--category C] [--charset latin]
-        [--bundles DIR] [--hip PATH] [--no-cook]
+        [--bundles DIR] [--traces DIR] [--hip PATH] [--no-cook]
+
+The saved .hip is self-contained and GUI-friendly: all configuration
+(roots, filters, charset, output dirs) lives as spare parameters on
+the /obj/penstroke_tops network — edit them in Houdini and re-cook,
+no code involved.
 
 Graph (one work item per font):
 
     font_scan (Python Processor)
-        penstroke.fontscan.scan() in-process; attributes per item:
-        family, ttf, store, trace_dir, bundle, charset.
-    trace_missing (Generic Generator)
-        Out-of-process venv CLI `penstroke trace` per item. Expected
-        output = the item's `store` attribute with Automatic cache
-        mode, so fonts that already have a stroke store SKIP the
-        trace — the PDG-native resumable batch.
+        penstroke.fontscan.scan() in-process, driven by the topnet
+        parms; attributes per item: family, name_norm, ttf, store,
+        trace_dir, trace_done, bundle, charset.
+    trace_missing (Python Processor, command items)
+        Out-of-process `penstroke trace` via scripts/run_trace.cmd
+        (scrubs PYTHONPATH/PYTHONHOME — PDG jobs inherit Houdini's,
+        which poisons the venv interpreter). The command is BAKED per
+        item at generation time: this node's command parm performs no
+        @attrib expansion (verified empirically). Items whose
+        metadata.json (trace_font's LAST write) exists get no command
+        — instant cook, which is the cache/resume mechanism.
     build_bundle (Python Script, in-process)
         Outline rep always; strokes rep when a store exists; cheap
-        mtime early-exit when the bundle is already current.
+        mtime early-exit. Generates only from COOKED upstream items,
+        so a failed trace produces no bundle instead of a silently
+        degraded one.
     make_index (Python Script after Wait for All)
-        index.html over all built bundles (QA sheets inline).
-
-By default cooks the graph after building and saves the .hip so the
-graph stays inspectable/re-cookable in the Houdini UI.
+        index.html over all built bundles (QA sheets linked).
 """
 
 import argparse
@@ -33,37 +41,61 @@ _SRC = os.path.join(_REPO, 'src')
 if _SRC not in sys.path:
     sys.path.insert(0, _SRC)
 
-VENV_PYTHON = os.path.join(_REPO, '.venv', 'Scripts', 'python.exe')
+TOPNET_PATH = '/obj/penstroke_tops'
 DEFAULT_ROOTS = [os.path.join(_REPO, 'output', 'handwriting')]
 DEFAULT_BUNDLES = os.path.join(_REPO, 'output', 'hfont_dev', 'bundles')
+DEFAULT_TRACES = os.path.join(_REPO, 'output', 'handwriting')
 DEFAULT_HIP = os.path.join(_REPO, 'output', 'hfont_dev',
                            'penstroke_tops.hip')
 
+# Code templates. Tokens (__TOKEN__) are substituted with .replace()
+# — NOT str.format — so braces and backslashes in the code stay inert.
+
 SCAN_CODE = '''
-import json
 import os
+
+import hou
 from penstroke.fontscan import scan
 
-cfg = json.loads({cfg!r})
-records = scan(cfg['roots'], name=cfg['name'], category=cfg['category'],
-               limit=cfg['limit'])
+top = hou.node('__TOPNET__')
+roots = [r.strip() for r in top.evalParm('roots').splitlines()
+         if r.strip()]
+records = scan(roots,
+               name=top.evalParm('namefilter') or None,
+               category=top.evalParm('category') or None,
+               limit=top.evalParm('limit') or None)
+charset = top.parm('charset').evalAsString()
+traces_root = top.evalParm('tracesroot')
+bundles_root = top.evalParm('bundlesroot')
+
 for i, rec in enumerate(records):
-    trace_dir = rec['trace_dir'] or os.path.join(
-        cfg['traces_root'], rec['family'].lower().replace(' ', ''))
+    norm = rec['family'].lower().replace(' ', '')
+    trace_dir = rec['trace_dir'] or os.path.join(traces_root, norm)
     store = rec['store'] or os.path.join(trace_dir, 'strokes.json')
-    bundle = os.path.join(cfg['bundles_root'],
-                          rec['family'].lower().replace(' ', '') + '.hfont')
     w = item_holder.addWorkItem(index=i)
     w.setStringAttrib('family', rec['family'])
+    w.setStringAttrib('name_norm', norm)
     w.setStringAttrib('ttf', rec['ttf'])
     w.setStringAttrib('store', store)
     w.setStringAttrib('trace_dir', trace_dir)
-    # metadata.json is trace_font's LAST write = the completion
-    # marker (a partial strokes.json must not skip the trace).
+    # metadata.json is trace_font's LAST write = completion marker.
     w.setStringAttrib('trace_done', os.path.join(trace_dir,
                                                  'metadata.json'))
-    w.setStringAttrib('bundle', bundle)
-    w.setStringAttrib('charset', cfg['charset'])
+    w.setStringAttrib('bundle',
+                      os.path.join(bundles_root, norm + '.hfont'))
+    w.setStringAttrib('charset', charset)
+'''
+
+TRACE_CODE = '''
+import os
+for upstream_item in upstream_items:
+    w = item_holder.addWorkItem(parent=upstream_item)
+    if not os.path.exists(upstream_item.stringAttribValue('trace_done')):
+        w.setCommand('"__LAUNCHER__" "%s" "%s" %s "%s"' % (
+            upstream_item.stringAttribValue('ttf'),
+            upstream_item.stringAttribValue('trace_dir'),
+            upstream_item.stringAttribValue('charset'),
+            upstream_item.stringAttribValue('name_norm')))
 '''
 
 BUILD_CODE = '''
@@ -122,7 +154,9 @@ import html
 import json
 import os
 
-bundles_root = {bundles_root!r}
+import hou
+
+bundles_root = hou.node('__TOPNET__').evalParm('bundlesroot')
 rows = []
 for man_path in sorted(glob.glob(os.path.join(bundles_root, '*.hfont',
                                               'manifest.json'))):
@@ -130,19 +164,19 @@ for man_path in sorted(glob.glob(os.path.join(bundles_root, '*.hfont',
     rel = os.path.basename(bundle)
     with open(man_path, encoding='utf-8') as f:
         man = json.load(f)
-    reps = ', '.join(sorted(man.get('reps', {{}})))
+    reps = ', '.join(sorted(man.get('reps', {})))
     qa = []
     for rep in ('strokes', 'outline'):
         png = os.path.join(bundle, 'qa', rep + '.png')
         if os.path.exists(png):
-            qa.append(f'<a href="{{rel}}/qa/{{rep}}.png">{{rep}}</a>')
-    rows.append(f'<tr><td>{{html.escape(man["family"])}}</td>'
-                f'<td>{{reps}}</td><td>{{" ".join(qa)}}</td></tr>')
+            qa.append('<a href="%s/qa/%s.png">%s</a>' % (rel, rep, rep))
+    rows.append('<tr><td>%s</td><td>%s</td><td>%s</td></tr>'
+                % (html.escape(man['family']), reps, ' '.join(qa)))
 doc = ('<!DOCTYPE html><meta charset="utf-8"><title>hfont bundles</title>'
-       '<style>body{{font-family:system-ui;margin:40px}}'
-       'td{{padding:4px 16px 4px 0}}</style>'
-       f'<h1>hfont bundles ({{len(rows)}})</h1>'
-       '<table><tr><th>family</th><th>reps</th><th>QA</th></tr>'
+       '<style>body{font-family:system-ui;margin:40px}'
+       'td{padding:4px 16px 4px 0}</style>'
+       '<h1>hfont bundles (%d)</h1>' % len(rows)
+       + '<table><tr><th>family</th><th>reps</th><th>QA</th></tr>'
        + ''.join(rows) + '</table>')
 with open(os.path.join(bundles_root, 'index.html'), 'w',
           encoding='utf-8') as f:
@@ -151,47 +185,62 @@ print('index:', os.path.join(bundles_root, 'index.html'))
 '''
 
 
-def build_graph(cfg):
+def _topnet_parm_templates():
     import hou
-    import json
+    return [
+        hou.StringParmTemplate(
+            'roots', 'Font Roots (one per line)', 1,
+            tags={'editor': '1', 'editorlines': '3'},
+            help='Directories to scan: google/fonts checkouts, '
+                 'penstroke trace outputs, or plain TTF folders.'),
+        hou.StringParmTemplate(
+            'tracesroot', 'Traces Root', 1,
+            string_type=hou.stringParmType.FileReference,
+            help='Where fresh traces land (existing trace dirs are '
+                 'matched by family name).'),
+        hou.StringParmTemplate(
+            'bundlesroot', 'Bundles Root', 1,
+            string_type=hou.stringParmType.FileReference),
+        hou.StringParmTemplate(
+            'namefilter', 'Family Name Regex', 1),
+        hou.StringParmTemplate(
+            'category', 'Google Fonts Category', 1,
+            help='e.g. HANDWRITING. Empty = all. Only applies to '
+                 'METADATA.pb records.'),
+        hou.MenuParmTemplate('charset', 'Charset',
+                             ('ascii', 'latin', 'all'),
+                             default_value=1),
+        hou.IntParmTemplate('limit', 'Limit (0 = all)', 1,
+                            default_value=(0,), min=0, max=500),
+    ]
+
+
+def build_graph():
+    import hou
     topnet = hou.node('/obj').createNode('topnet', 'penstroke_tops')
+    assert topnet.path() == TOPNET_PATH, topnet.path()
+
+    ptg = topnet.parmTemplateGroup()
+    folder = hou.FolderParmTemplate('penstroke', 'Penstroke',
+                                    _topnet_parm_templates())
+    ptg.insertBefore(ptg.entries()[0], folder)
+    topnet.setParmTemplateGroup(ptg)
 
     scan_node = topnet.createNode('pythonprocessor', 'font_scan')
     scan_node.parm('generate').set(
-        SCAN_CODE.format(cfg=json.dumps(cfg)))
+        SCAN_CODE.replace('__TOPNET__', TOPNET_PATH))
 
-    # Python Processor with the command BAKED per item at generation
-    # time. Attribute tokens (@ttf etc.) are not expanded in this
-    # node's command parm — observed empirically, even with backtick
-    # escapes — so baking real values is the reliable route. Items
-    # whose trace is already complete get no command (= instant cook),
-    # which is the cache. The .cmd launcher scrubs PYTHONPATH/
-    # PYTHONHOME, which PDG jobs inherit from Houdini (venv python +
-    # Houdini stdlib = SRE module mismatch crash).
-    # Forward slashes: the path is injected textually into Python
-    # source below, where backslashes would act as string escapes.
     launcher = os.path.join(_REPO, 'scripts',
                             'run_trace.cmd').replace(os.sep, '/')
     trace = topnet.createNode('pythonprocessor', 'trace_missing')
     trace.setInput(0, scan_node)
-    trace.parm('generate').set('''
-import os
-for upstream_item in upstream_items:
-    w = item_holder.addWorkItem(parent=upstream_item)
-    if not os.path.exists(upstream_item.stringAttribValue('trace_done')):
-        w.setCommand('"{launcher}" "%s" "%s" %s' % (
-            upstream_item.stringAttribValue('ttf'),
-            upstream_item.stringAttribValue('trace_dir'),
-            upstream_item.stringAttribValue('charset')))
-'''.replace('{launcher}', launcher))
+    trace.parm('generate').set(
+        TRACE_CODE.replace('__LAUNCHER__', launcher))
 
     build = topnet.createNode('pythonscript', 'build_bundle')
     build.setInput(0, trace)
     build.parm('inprocess').set(True)
-    # Generate only from COOKED upstream items: a failed trace then
-    # produces no bundle at all (visible in the index) instead of a
-    # quietly degraded one.
-    build.parm('pdg_workitemgeneration').set('0')
+    build.parm('pdg_workitemgeneration').set('0')   # from cooked items
     build.parm('script').set(BUILD_CODE)
 
     wait = topnet.createNode('waitforall', 'wait_all')
@@ -201,7 +250,7 @@ for upstream_item in upstream_items:
     index.setInput(0, wait)
     index.parm('inprocess').set(True)
     index.parm('script').set(
-        INDEX_CODE.format(bundles_root=cfg['bundles_root']))
+        INDEX_CODE.replace('__TOPNET__', TOPNET_PATH))
 
     index.setDisplayFlag(True)
     topnet.layoutChildren()
@@ -213,30 +262,26 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument('--roots', nargs='+', default=DEFAULT_ROOTS)
     ap.add_argument('--bundles', default=DEFAULT_BUNDLES)
-    ap.add_argument('--traces',
-                    default=os.path.join(_REPO, 'output', 'handwriting'),
-                    help='Where fresh traces land (trace_dir for fonts '
-                         'scanned without one).')
-    ap.add_argument('--name', default=None)
-    ap.add_argument('--category', default=None)
+    ap.add_argument('--traces', default=DEFAULT_TRACES)
+    ap.add_argument('--name', default='')
+    ap.add_argument('--category', default='')
     ap.add_argument('--charset', default='latin',
                     choices=['ascii', 'latin', 'all'])
-    ap.add_argument('--limit', type=int, default=None)
+    ap.add_argument('--limit', type=int, default=0)
     ap.add_argument('--hip', default=DEFAULT_HIP)
     ap.add_argument('--no-cook', action='store_true')
     args = ap.parse_args(argv)
 
-    cfg = {
-        'roots': [os.path.abspath(r) for r in args.roots],
-        'bundles_root': os.path.abspath(args.bundles),
-        'traces_root': os.path.abspath(args.traces),
-        'name': args.name,
-        'category': args.category,
-        'charset': args.charset,
-        'limit': args.limit,
-    }
-    os.makedirs(cfg['bundles_root'], exist_ok=True)
-    topnet, index = build_graph(cfg)
+    topnet, index = build_graph()
+    topnet.parm('roots').set(
+        '\n'.join(os.path.abspath(r) for r in args.roots))
+    topnet.parm('tracesroot').set(os.path.abspath(args.traces))
+    topnet.parm('bundlesroot').set(os.path.abspath(args.bundles))
+    topnet.parm('namefilter').set(args.name)
+    topnet.parm('category').set(args.category)
+    topnet.parm('charset').set(args.charset)
+    topnet.parm('limit').set(args.limit)
+    os.makedirs(os.path.abspath(args.bundles), exist_ok=True)
 
     os.makedirs(os.path.dirname(os.path.abspath(args.hip)), exist_ok=True)
     hou.hipFile.save(args.hip)
@@ -244,9 +289,9 @@ def main(argv=None):
 
     if not args.no_cook:
         index.cookWorkItems(block=True)
-        n = len([d for d in os.listdir(cfg['bundles_root'])
+        n = len([d for d in os.listdir(os.path.abspath(args.bundles))
                  if d.endswith('.hfont')])
-        print(f'cooked: {n} bundles under {cfg["bundles_root"]}')
+        print(f'cooked: {n} bundles under {os.path.abspath(args.bundles)}')
     return 0
 
 

@@ -124,14 +124,11 @@ def _scan_dir(folder):
         ttf = _pick_ttf(src_ttfs)
         complete = os.path.exists(trace_meta)
         store = os.path.join(folder, 'strokes.json')
-        family = None
-        if complete:
-            try:
-                with open(trace_meta, encoding='utf-8') as f:
-                    family = json.load(f).get('font_name')
-            except Exception:
-                pass
-        return _record(family or os.path.basename(folder), ttf,
+        # The folder basename IS the family identity for trace dirs —
+        # the batch convention. metadata.json's font_name may carry a
+        # TTF-stem name ('Ballet[opsz]') and must not fork the family
+        # into a differently-named duplicate bundle.
+        return _record(os.path.basename(folder), ttf,
                        license_file=_find_license_file(
                            os.path.join(folder, 'source')),
                        store=store if complete and os.path.exists(store)
