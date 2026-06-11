@@ -123,7 +123,7 @@ def trace_font(
     # complete font).
     if letters is None:
         try:
-            from penstroke.editround import font_charset
+            from penstroke.charset import font_charset
             letters = font_charset(ttf_path, charset=charset)
         except Exception:
             letters = _FALLBACK_LETTERS

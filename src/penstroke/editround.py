@@ -28,7 +28,6 @@ transform, exactly as the tracer does — the user edits pure geometry.
 
 import json
 import os
-import unicodedata
 
 import numpy as np
 
@@ -260,42 +259,9 @@ def load_stroke_store(output_dir):
     return out
 
 
-# Charset presets: Unicode block ranges, intersected with whatever the
-# font's cmap actually carries.
-CHARSETS = {
-    'ascii': [(0x21, 0x7E)],
-    'latin': [(0x21, 0x7E), (0xA1, 0xFF)],
-}
-
-
-def font_charset(ttf_path, charset='latin'):
-    """Drawable characters in the font's cmap for a named charset preset.
-
-    Control characters, whitespace, and combining marks are skipped
-    (combining marks have no standalone letterform). Glyphs that
-    rasterize to nothing are filtered later by the trace loop itself.
-    """
-    from fontTools.ttLib import TTFont
-    if charset not in CHARSETS:
-        raise ValueError(f'unknown charset {charset!r}; '
-                         f'options: {", ".join(CHARSETS)}')
-    ranges = CHARSETS[charset]
-    tt = TTFont(ttf_path)
-    cmap = tt.getBestCmap()
-    chars = []
-    for cp in sorted(cmap):
-        ch = chr(cp)
-        if ch.isspace():
-            continue
-        cat = unicodedata.category(ch)
-        if cat.startswith('C'):
-            continue
-        if cat == 'Mn':
-            continue   # combining marks: no standalone letterform
-        if ranges is not None and not any(a <= cp <= b for a, b in ranges):
-            continue
-        chars.append(ch)
-    return ''.join(chars)
+# Charset presets live in penstroke.charset (dependency-light so
+# hython can import them); re-exported here for existing callers.
+from penstroke.charset import CHARSETS, font_charset  # noqa: F401
 
 
 def _resample_polyline(pts, n=None, step=None):
