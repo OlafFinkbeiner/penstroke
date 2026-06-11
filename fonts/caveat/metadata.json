@@ -1,0 +1,1665 @@
+{
+  "font_name": "caveat",
+  "font_file": "source/caveat.ttf",
+  "license": "OFL-1.1",
+  "units_per_em": 1000,
+  "canvas_dims": [
+    464,
+    564
+  ],
+  "baseline_y": 409,
+  "letters": {
+    "!": {
+      "file": "glyphs/excl.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 81,
+      "quality_score": 0.842,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\"": {
+      "file": "glyphs/quot.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 91,
+      "quality_score": 0.843,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "#": {
+      "file": "glyphs/hash.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 215,
+      "quality_score": 0.838,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "$": {
+      "file": "glyphs/dollar.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 173,
+      "quality_score": 0.833,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "%": {
+      "file": "glyphs/percent.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 230,
+      "quality_score": 0.847,
+      "issues": [
+        "moderate coverage (85%): some glyph features not traced"
+      ]
+    },
+    "&": {
+      "file": "glyphs/amp.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 217,
+      "quality_score": 0.816,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "'": {
+      "file": "glyphs/apos.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 45,
+      "quality_score": 0.826,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "(": {
+      "file": "glyphs/lparen.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.832,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    ")": {
+      "file": "glyphs/rparen.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.869,
+      "issues": []
+    },
+    "*": {
+      "file": "glyphs/star.svg",
+      "template_used": "kept",
+      "stroke_count": 5,
+      "advance_px": 139,
+      "quality_score": 0.85,
+      "issues": []
+    },
+    "+": {
+      "file": "glyphs/plus.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 171,
+      "quality_score": 0.83,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    ",": {
+      "file": "glyphs/comma.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 76,
+      "quality_score": 0.858,
+      "issues": []
+    },
+    "-": {
+      "file": "glyphs/minus.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 125,
+      "quality_score": 0.862,
+      "issues": []
+    },
+    ".": {
+      "file": "glyphs/period.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 76,
+      "quality_score": 0.928,
+      "issues": []
+    },
+    "/": {
+      "file": "glyphs/slash.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.813,
+      "issues": [
+        "moderate coverage (81%): some glyph features not traced"
+      ]
+    },
+    "0": {
+      "file": "glyphs/0.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 173,
+      "quality_score": 0.827,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "1": {
+      "file": "glyphs/1.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 173,
+      "quality_score": 0.772,
+      "issues": [
+        "moderate coverage (77%): some glyph features not traced"
+      ]
+    },
+    "2": {
+      "file": "glyphs/2.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 173,
+      "quality_score": 0.832,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "3": {
+      "file": "glyphs/3.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 173,
+      "quality_score": 0.805,
+      "issues": [
+        "moderate coverage (80%): some glyph features not traced"
+      ]
+    },
+    "4": {
+      "file": "glyphs/4.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 173,
+      "quality_score": 0.87,
+      "issues": []
+    },
+    "5": {
+      "file": "glyphs/5.svg",
+      "template_used": "edited",
+      "stroke_count": 1,
+      "advance_px": 173,
+      "quality_score": 0.808,
+      "issues": [
+        "moderate coverage (81%): some glyph features not traced"
+      ]
+    },
+    "6": {
+      "file": "glyphs/6.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 173,
+      "quality_score": 0.839,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "7": {
+      "file": "glyphs/7.svg",
+      "template_used": "edited",
+      "stroke_count": 2,
+      "advance_px": 173,
+      "quality_score": 0.763,
+      "issues": [
+        "moderate coverage (76%): some glyph features not traced"
+      ]
+    },
+    "8": {
+      "file": "glyphs/8.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 173,
+      "quality_score": 0.826,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "9": {
+      "file": "glyphs/9.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 173,
+      "quality_score": 0.851,
+      "issues": []
+    },
+    ":": {
+      "file": "glyphs/colon.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 76,
+      "quality_score": 0.93,
+      "issues": []
+    },
+    ";": {
+      "file": "glyphs/semi.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 76,
+      "quality_score": 0.888,
+      "issues": []
+    },
+    "<": {
+      "file": "glyphs/lt.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 171,
+      "quality_score": 0.855,
+      "issues": []
+    },
+    "=": {
+      "file": "glyphs/eq.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 171,
+      "quality_score": 0.875,
+      "issues": []
+    },
+    ">": {
+      "file": "glyphs/gt.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 171,
+      "quality_score": 0.846,
+      "issues": [
+        "moderate coverage (85%): some glyph features not traced"
+      ]
+    },
+    "?": {
+      "file": "glyphs/question.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 144,
+      "quality_score": 0.831,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "@": {
+      "file": "glyphs/at.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 247,
+      "quality_score": 0.83,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "A": {
+      "file": "glyphs/cap_A.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 193,
+      "quality_score": 0.843,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "B": {
+      "file": "glyphs/cap_B.svg",
+      "template_used": "edited",
+      "stroke_count": 3,
+      "advance_px": 200,
+      "quality_score": 0.88,
+      "issues": []
+    },
+    "C": {
+      "file": "glyphs/cap_C.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 181,
+      "quality_score": 0.864,
+      "issues": []
+    },
+    "D": {
+      "file": "glyphs/cap_D.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 222,
+      "quality_score": 0.867,
+      "issues": []
+    },
+    "E": {
+      "file": "glyphs/cap_E.svg",
+      "template_used": "edited",
+      "stroke_count": 3,
+      "advance_px": 203,
+      "quality_score": 0.871,
+      "issues": []
+    },
+    "F": {
+      "file": "glyphs/cap_F.svg",
+      "template_used": "edited",
+      "stroke_count": 3,
+      "advance_px": 174,
+      "quality_score": 0.863,
+      "issues": []
+    },
+    "G": {
+      "file": "glyphs/cap_G.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 187,
+      "quality_score": 0.818,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "H": {
+      "file": "glyphs/cap_H.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 216,
+      "quality_score": 0.839,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "I": {
+      "file": "glyphs/cap_I.svg",
+      "template_used": "edited",
+      "stroke_count": 3,
+      "advance_px": 154,
+      "quality_score": 0.873,
+      "issues": []
+    },
+    "J": {
+      "file": "glyphs/cap_J.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 118,
+      "quality_score": 0.837,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "K": {
+      "file": "glyphs/cap_K.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 191,
+      "quality_score": 0.862,
+      "issues": []
+    },
+    "L": {
+      "file": "glyphs/cap_L.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 164,
+      "quality_score": 0.835,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "M": {
+      "file": "glyphs/cap_M.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 276,
+      "quality_score": 0.836,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "N": {
+      "file": "glyphs/cap_N.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 230,
+      "quality_score": 0.828,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "O": {
+      "file": "glyphs/cap_O.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 190,
+      "quality_score": 0.856,
+      "issues": []
+    },
+    "P": {
+      "file": "glyphs/cap_P.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 178,
+      "quality_score": 0.864,
+      "issues": []
+    },
+    "Q": {
+      "file": "glyphs/cap_Q.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 193,
+      "quality_score": 0.873,
+      "issues": []
+    },
+    "R": {
+      "file": "glyphs/cap_R.svg",
+      "template_used": "edited",
+      "stroke_count": 3,
+      "advance_px": 206,
+      "quality_score": 0.826,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "S": {
+      "file": "glyphs/cap_S.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 187,
+      "quality_score": 0.843,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "T": {
+      "file": "glyphs/cap_T.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 176,
+      "quality_score": 0.868,
+      "issues": []
+    },
+    "U": {
+      "file": "glyphs/cap_U.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 185,
+      "quality_score": 0.835,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "V": {
+      "file": "glyphs/cap_V.svg",
+      "template_used": "edited",
+      "stroke_count": 2,
+      "advance_px": 188,
+      "quality_score": 0.827,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "W": {
+      "file": "glyphs/cap_W.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 276,
+      "quality_score": 0.857,
+      "issues": []
+    },
+    "X": {
+      "file": "glyphs/cap_X.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 201,
+      "quality_score": 0.818,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "Y": {
+      "file": "glyphs/cap_Y.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 194,
+      "quality_score": 0.87,
+      "issues": []
+    },
+    "Z": {
+      "file": "glyphs/cap_Z.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 200,
+      "quality_score": 0.83,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "[": {
+      "file": "glyphs/lbrack.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 127,
+      "quality_score": 0.853,
+      "issues": []
+    },
+    "\\": {
+      "file": "glyphs/backslash.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.828,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "]": {
+      "file": "glyphs/rbrack.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.855,
+      "issues": []
+    },
+    "^": {
+      "file": "glyphs/caret.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 171,
+      "quality_score": 0.852,
+      "issues": []
+    },
+    "_": {
+      "file": "glyphs/underscore.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 171,
+      "quality_score": 0.858,
+      "issues": []
+    },
+    "`": {
+      "file": "glyphs/grave.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 136,
+      "quality_score": 0.857,
+      "issues": []
+    },
+    "a": {
+      "file": "glyphs/a.svg",
+      "template_used": "edited",
+      "stroke_count": 2,
+      "advance_px": 168,
+      "quality_score": 0.854,
+      "issues": []
+    },
+    "b": {
+      "file": "glyphs/b.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 167,
+      "quality_score": 0.858,
+      "issues": []
+    },
+    "c": {
+      "file": "glyphs/c.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 136,
+      "quality_score": 0.857,
+      "issues": []
+    },
+    "d": {
+      "file": "glyphs/d.svg",
+      "template_used": "edited",
+      "stroke_count": 2,
+      "advance_px": 151,
+      "quality_score": 0.894,
+      "issues": []
+    },
+    "e": {
+      "file": "glyphs/e.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 125,
+      "quality_score": 0.867,
+      "issues": []
+    },
+    "f": {
+      "file": "glyphs/f.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 112,
+      "quality_score": 0.874,
+      "issues": []
+    },
+    "g": {
+      "file": "glyphs/g.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 136,
+      "quality_score": 0.882,
+      "issues": []
+    },
+    "h": {
+      "file": "glyphs/h.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 178,
+      "quality_score": 0.81,
+      "issues": [
+        "moderate coverage (81%): some glyph features not traced"
+      ]
+    },
+    "i": {
+      "file": "glyphs/i.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 72,
+      "quality_score": 0.79,
+      "issues": [
+        "moderate coverage (79%): some glyph features not traced"
+      ]
+    },
+    "j": {
+      "file": "glyphs/j.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 78,
+      "quality_score": 0.842,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "k": {
+      "file": "glyphs/k.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 140,
+      "quality_score": 0.88,
+      "issues": []
+    },
+    "l": {
+      "file": "glyphs/l.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 65,
+      "quality_score": 0.879,
+      "issues": []
+    },
+    "m": {
+      "file": "glyphs/m.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 215,
+      "quality_score": 0.846,
+      "issues": [
+        "moderate coverage (85%): some glyph features not traced"
+      ]
+    },
+    "n": {
+      "file": "glyphs/n.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 173,
+      "quality_score": 0.865,
+      "issues": []
+    },
+    "o": {
+      "file": "glyphs/o.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 136,
+      "quality_score": 0.878,
+      "issues": []
+    },
+    "p": {
+      "file": "glyphs/p.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 145,
+      "quality_score": 0.884,
+      "issues": []
+    },
+    "q": {
+      "file": "glyphs/q.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 145,
+      "quality_score": 0.899,
+      "issues": []
+    },
+    "r": {
+      "file": "glyphs/r.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 138,
+      "quality_score": 0.872,
+      "issues": []
+    },
+    "s": {
+      "file": "glyphs/s.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 131,
+      "quality_score": 0.824,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "t": {
+      "file": "glyphs/t.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 127,
+      "quality_score": 0.832,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "u": {
+      "file": "glyphs/u.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 142,
+      "quality_score": 0.81,
+      "issues": [
+        "moderate coverage (81%): some glyph features not traced"
+      ]
+    },
+    "v": {
+      "file": "glyphs/v.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.789,
+      "issues": [
+        "moderate coverage (79%): some glyph features not traced"
+      ]
+    },
+    "w": {
+      "file": "glyphs/w.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 199,
+      "quality_score": 0.817,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "x": {
+      "file": "glyphs/x.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 132,
+      "quality_score": 0.792,
+      "issues": [
+        "moderate coverage (79%): some glyph features not traced"
+      ]
+    },
+    "y": {
+      "file": "glyphs/y.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 131,
+      "quality_score": 0.853,
+      "issues": []
+    },
+    "z": {
+      "file": "glyphs/z.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 121,
+      "quality_score": 0.908,
+      "issues": []
+    },
+    "{": {
+      "file": "glyphs/lbrace.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.842,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "|": {
+      "file": "glyphs/pipe.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.868,
+      "issues": []
+    },
+    "}": {
+      "file": "glyphs/rbrace.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 127,
+      "quality_score": 0.889,
+      "issues": []
+    },
+    "~": {
+      "file": "glyphs/tilde.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 171,
+      "quality_score": 0.803,
+      "issues": [
+        "moderate coverage (80%): some glyph features not traced"
+      ]
+    },
+    "\u00a1": {
+      "file": "glyphs/u00a1.svg",
+      "template_used": "edited",
+      "stroke_count": 2,
+      "advance_px": 81,
+      "quality_score": 0.789,
+      "issues": [
+        "moderate coverage (79%): some glyph features not traced"
+      ]
+    },
+    "\u00a2": {
+      "file": "glyphs/u00a2.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 173,
+      "quality_score": 0.866,
+      "issues": []
+    },
+    "\u00a3": {
+      "file": "glyphs/u00a3.svg",
+      "template_used": "edited",
+      "stroke_count": 3,
+      "advance_px": 173,
+      "quality_score": 0.837,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00a4": {
+      "file": "glyphs/u00a4.svg",
+      "template_used": "kept",
+      "stroke_count": 5,
+      "advance_px": 173,
+      "quality_score": 0.911,
+      "issues": []
+    },
+    "\u00a5": {
+      "file": "glyphs/u00a5.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 173,
+      "quality_score": 0.856,
+      "issues": []
+    },
+    "\u00a6": {
+      "file": "glyphs/u00a6.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 127,
+      "quality_score": 0.841,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00a7": {
+      "file": "glyphs/u00a7.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 148,
+      "quality_score": 0.884,
+      "issues": []
+    },
+    "\u00a8": {
+      "file": "glyphs/u00a8.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 136,
+      "quality_score": 0.899,
+      "issues": []
+    },
+    "\u00a9": {
+      "file": "glyphs/u00a9.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 190,
+      "quality_score": 0.845,
+      "issues": [
+        "moderate coverage (85%): some glyph features not traced"
+      ]
+    },
+    "\u00aa": {
+      "file": "glyphs/\u00aa.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 134,
+      "quality_score": 0.888,
+      "issues": []
+    },
+    "\u00ab": {
+      "file": "glyphs/u00ab.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 248,
+      "quality_score": 0.897,
+      "issues": []
+    },
+    "\u00ac": {
+      "file": "glyphs/u00ac.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 179,
+      "quality_score": 0.857,
+      "issues": []
+    },
+    "\u00ae": {
+      "file": "glyphs/u00ae.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 190,
+      "quality_score": 0.857,
+      "issues": []
+    },
+    "\u00af": {
+      "file": "glyphs/u00af.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 136,
+      "quality_score": 0.84,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00b0": {
+      "file": "glyphs/u00b0.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 109,
+      "quality_score": 0.877,
+      "issues": []
+    },
+    "\u00b1": {
+      "file": "glyphs/u00b1.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 171,
+      "quality_score": 0.877,
+      "issues": []
+    },
+    "\u00b2": {
+      "file": "glyphs/\u00b2.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 123,
+      "quality_score": 0.836,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00b3": {
+      "file": "glyphs/\u00b3.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 123,
+      "quality_score": 0.801,
+      "issues": [
+        "moderate coverage (80%): some glyph features not traced"
+      ]
+    },
+    "\u00b4": {
+      "file": "glyphs/u00b4.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 136,
+      "quality_score": 0.843,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00b5": {
+      "file": "glyphs/\u00b5.svg",
+      "template_used": "edited",
+      "stroke_count": 3,
+      "advance_px": 142,
+      "quality_score": 0.813,
+      "issues": [
+        "moderate coverage (81%): some glyph features not traced"
+      ]
+    },
+    "\u00b6": {
+      "file": "glyphs/u00b6.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 163,
+      "quality_score": 0.885,
+      "issues": []
+    },
+    "\u00b7": {
+      "file": "glyphs/u00b7.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 72,
+      "quality_score": 0.845,
+      "issues": [
+        "moderate coverage (85%): some glyph features not traced"
+      ]
+    },
+    "\u00b8": {
+      "file": "glyphs/u00b8.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 136,
+      "quality_score": 0.846,
+      "issues": [
+        "moderate coverage (85%): some glyph features not traced"
+      ]
+    },
+    "\u00b9": {
+      "file": "glyphs/\u00b9.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 123,
+      "quality_score": 0.76,
+      "issues": [
+        "moderate coverage (76%): some glyph features not traced"
+      ]
+    },
+    "\u00ba": {
+      "file": "glyphs/\u00ba.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 109,
+      "quality_score": 0.885,
+      "issues": []
+    },
+    "\u00bb": {
+      "file": "glyphs/u00bb.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 272,
+      "quality_score": 0.868,
+      "issues": []
+    },
+    "\u00bc": {
+      "file": "glyphs/u00bc.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 307,
+      "quality_score": 0.826,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "\u00bd": {
+      "file": "glyphs/u00bd.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 307,
+      "quality_score": 0.822,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "\u00be": {
+      "file": "glyphs/u00be.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 307,
+      "quality_score": 0.859,
+      "issues": []
+    },
+    "\u00bf": {
+      "file": "glyphs/u00bf.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 144,
+      "quality_score": 0.85,
+      "issues": []
+    },
+    "\u00c0": {
+      "file": "glyphs/cap_\u00c0.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 193,
+      "quality_score": 0.884,
+      "issues": []
+    },
+    "\u00c1": {
+      "file": "glyphs/cap_\u00c1.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 193,
+      "quality_score": 0.88,
+      "issues": []
+    },
+    "\u00c2": {
+      "file": "glyphs/cap_\u00c2.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 193,
+      "quality_score": 0.876,
+      "issues": []
+    },
+    "\u00c3": {
+      "file": "glyphs/cap_\u00c3.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 193,
+      "quality_score": 0.874,
+      "issues": []
+    },
+    "\u00c4": {
+      "file": "glyphs/cap_\u00c4.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 193,
+      "quality_score": 0.843,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00c5": {
+      "file": "glyphs/cap_\u00c5.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 193,
+      "quality_score": 0.898,
+      "issues": []
+    },
+    "\u00c6": {
+      "file": "glyphs/cap_\u00c6.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 301,
+      "quality_score": 0.884,
+      "issues": []
+    },
+    "\u00c7": {
+      "file": "glyphs/cap_\u00c7.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 185,
+      "quality_score": 0.862,
+      "issues": []
+    },
+    "\u00c8": {
+      "file": "glyphs/cap_\u00c8.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 210,
+      "quality_score": 0.86,
+      "issues": []
+    },
+    "\u00c9": {
+      "file": "glyphs/cap_\u00c9.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 210,
+      "quality_score": 0.862,
+      "issues": []
+    },
+    "\u00ca": {
+      "file": "glyphs/cap_\u00ca.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 210,
+      "quality_score": 0.867,
+      "issues": []
+    },
+    "\u00cb": {
+      "file": "glyphs/cap_\u00cb.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 210,
+      "quality_score": 0.859,
+      "issues": []
+    },
+    "\u00cc": {
+      "file": "glyphs/cap_\u00cc.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 154,
+      "quality_score": 0.881,
+      "issues": []
+    },
+    "\u00cd": {
+      "file": "glyphs/cap_\u00cd.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 154,
+      "quality_score": 0.888,
+      "issues": []
+    },
+    "\u00ce": {
+      "file": "glyphs/cap_\u00ce.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 154,
+      "quality_score": 0.871,
+      "issues": []
+    },
+    "\u00cf": {
+      "file": "glyphs/cap_\u00cf.svg",
+      "template_used": "kept",
+      "stroke_count": 5,
+      "advance_px": 154,
+      "quality_score": 0.885,
+      "issues": []
+    },
+    "\u00d0": {
+      "file": "glyphs/cap_\u00d0.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 222,
+      "quality_score": 0.871,
+      "issues": []
+    },
+    "\u00d1": {
+      "file": "glyphs/cap_\u00d1.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 217,
+      "quality_score": 0.83,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "\u00d2": {
+      "file": "glyphs/cap_\u00d2.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 190,
+      "quality_score": 0.873,
+      "issues": []
+    },
+    "\u00d3": {
+      "file": "glyphs/cap_\u00d3.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 190,
+      "quality_score": 0.872,
+      "issues": []
+    },
+    "\u00d4": {
+      "file": "glyphs/cap_\u00d4.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 190,
+      "quality_score": 0.874,
+      "issues": []
+    },
+    "\u00d5": {
+      "file": "glyphs/cap_\u00d5.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 190,
+      "quality_score": 0.868,
+      "issues": []
+    },
+    "\u00d6": {
+      "file": "glyphs/cap_\u00d6.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 190,
+      "quality_score": 0.844,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00d7": {
+      "file": "glyphs/u00d7.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 171,
+      "quality_score": 0.868,
+      "issues": []
+    },
+    "\u00d8": {
+      "file": "glyphs/cap_\u00d8.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 190,
+      "quality_score": 0.837,
+      "issues": [
+        "moderate coverage (84%): some glyph features not traced"
+      ]
+    },
+    "\u00d9": {
+      "file": "glyphs/cap_\u00d9.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 185,
+      "quality_score": 0.853,
+      "issues": []
+    },
+    "\u00da": {
+      "file": "glyphs/cap_\u00da.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 185,
+      "quality_score": 0.851,
+      "issues": []
+    },
+    "\u00db": {
+      "file": "glyphs/cap_\u00db.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 185,
+      "quality_score": 0.83,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "\u00dc": {
+      "file": "glyphs/cap_\u00dc.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 185,
+      "quality_score": 0.803,
+      "issues": [
+        "moderate coverage (80%): some glyph features not traced"
+      ]
+    },
+    "\u00dd": {
+      "file": "glyphs/cap_\u00dd.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 194,
+      "quality_score": 0.881,
+      "issues": []
+    },
+    "\u00de": {
+      "file": "glyphs/cap_\u00de.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 181,
+      "quality_score": 0.878,
+      "issues": []
+    },
+    "\u00df": {
+      "file": "glyphs/\u00df.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 153,
+      "quality_score": 0.823,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "\u00e0": {
+      "file": "glyphs/\u00e0.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 168,
+      "quality_score": 0.882,
+      "issues": []
+    },
+    "\u00e1": {
+      "file": "glyphs/\u00e1.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 168,
+      "quality_score": 0.88,
+      "issues": []
+    },
+    "\u00e2": {
+      "file": "glyphs/\u00e2.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 168,
+      "quality_score": 0.872,
+      "issues": []
+    },
+    "\u00e3": {
+      "file": "glyphs/\u00e3.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 168,
+      "quality_score": 0.868,
+      "issues": []
+    },
+    "\u00e4": {
+      "file": "glyphs/\u00e4.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 168,
+      "quality_score": 0.809,
+      "issues": [
+        "moderate coverage (81%): some glyph features not traced"
+      ]
+    },
+    "\u00e5": {
+      "file": "glyphs/\u00e5.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 168,
+      "quality_score": 0.88,
+      "issues": []
+    },
+    "\u00e6": {
+      "file": "glyphs/\u00e6.svg",
+      "template_used": "kept",
+      "stroke_count": 1,
+      "advance_px": 220,
+      "quality_score": 0.898,
+      "issues": []
+    },
+    "\u00e7": {
+      "file": "glyphs/\u00e7.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 136,
+      "quality_score": 0.891,
+      "issues": []
+    },
+    "\u00e8": {
+      "file": "glyphs/\u00e8.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 125,
+      "quality_score": 0.88,
+      "issues": []
+    },
+    "\u00e9": {
+      "file": "glyphs/\u00e9.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 125,
+      "quality_score": 0.874,
+      "issues": []
+    },
+    "\u00ea": {
+      "file": "glyphs/\u00ea.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 125,
+      "quality_score": 0.892,
+      "issues": []
+    },
+    "\u00eb": {
+      "file": "glyphs/\u00eb.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 125,
+      "quality_score": 0.889,
+      "issues": []
+    },
+    "\u00ec": {
+      "file": "glyphs/\u00ec.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 72,
+      "quality_score": 0.883,
+      "issues": []
+    },
+    "\u00ed": {
+      "file": "glyphs/\u00ed.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 72,
+      "quality_score": 0.892,
+      "issues": []
+    },
+    "\u00ee": {
+      "file": "glyphs/\u00ee.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 72,
+      "quality_score": 0.864,
+      "issues": []
+    },
+    "\u00ef": {
+      "file": "glyphs/\u00ef.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 72,
+      "quality_score": 0.888,
+      "issues": []
+    },
+    "\u00f0": {
+      "file": "glyphs/\u00f0.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 134,
+      "quality_score": 0.888,
+      "issues": []
+    },
+    "\u00f1": {
+      "file": "glyphs/\u00f1.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 173,
+      "quality_score": 0.787,
+      "issues": [
+        "moderate coverage (79%): some glyph features not traced"
+      ]
+    },
+    "\u00f2": {
+      "file": "glyphs/\u00f2.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 136,
+      "quality_score": 0.877,
+      "issues": []
+    },
+    "\u00f3": {
+      "file": "glyphs/\u00f3.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 136,
+      "quality_score": 0.878,
+      "issues": []
+    },
+    "\u00f4": {
+      "file": "glyphs/\u00f4.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 136,
+      "quality_score": 0.865,
+      "issues": []
+    },
+    "\u00f5": {
+      "file": "glyphs/\u00f5.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 136,
+      "quality_score": 0.867,
+      "issues": []
+    },
+    "\u00f6": {
+      "file": "glyphs/\u00f6.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 136,
+      "quality_score": 0.85,
+      "issues": []
+    },
+    "\u00f7": {
+      "file": "glyphs/u00f7.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 171,
+      "quality_score": 0.889,
+      "issues": []
+    },
+    "\u00f8": {
+      "file": "glyphs/\u00f8.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 136,
+      "quality_score": 0.878,
+      "issues": []
+    },
+    "\u00f9": {
+      "file": "glyphs/\u00f9.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 142,
+      "quality_score": 0.819,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "\u00fa": {
+      "file": "glyphs/\u00fa.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 142,
+      "quality_score": 0.825,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "\u00fb": {
+      "file": "glyphs/\u00fb.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 142,
+      "quality_score": 0.816,
+      "issues": [
+        "moderate coverage (82%): some glyph features not traced"
+      ]
+    },
+    "\u00fc": {
+      "file": "glyphs/\u00fc.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 142,
+      "quality_score": 0.834,
+      "issues": [
+        "moderate coverage (83%): some glyph features not traced"
+      ]
+    },
+    "\u00fd": {
+      "file": "glyphs/\u00fd.svg",
+      "template_used": "kept",
+      "stroke_count": 3,
+      "advance_px": 131,
+      "quality_score": 0.866,
+      "issues": []
+    },
+    "\u00fe": {
+      "file": "glyphs/\u00fe.svg",
+      "template_used": "kept",
+      "stroke_count": 2,
+      "advance_px": 145,
+      "quality_score": 0.877,
+      "issues": []
+    },
+    "\u00ff": {
+      "file": "glyphs/\u00ff.svg",
+      "template_used": "kept",
+      "stroke_count": 4,
+      "advance_px": 131,
+      "quality_score": 0.876,
+      "issues": []
+    }
+  }
+}
