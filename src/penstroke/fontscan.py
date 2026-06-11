@@ -115,21 +115,27 @@ def _scan_dir(folder):
                        license_id=info.get('license'),
                        license_file=_find_license_file(folder))
 
-    if os.path.exists(trace_meta):
-        src_ttfs = sorted(glob.glob(os.path.join(folder, 'source', '*.ttf')))
+    src_ttfs = sorted(glob.glob(os.path.join(folder, 'source', '*.ttf')))
+    if src_ttfs:
+        # Penstroke trace output dir. metadata.json is written LAST by
+        # trace_font, so its presence marks a COMPLETE trace; without
+        # it the store (if any) is partial and the font needs
+        # (re)tracing — store stays None so downstream re-runs it.
         ttf = _pick_ttf(src_ttfs)
-        if ttf is None:
-            return None
+        complete = os.path.exists(trace_meta)
         store = os.path.join(folder, 'strokes.json')
-        try:
-            with open(trace_meta, encoding='utf-8') as f:
-                family = json.load(f).get('font_name')
-        except Exception:
-            family = None
-        return _record(family or _family_from_ttf(ttf), ttf,
+        family = None
+        if complete:
+            try:
+                with open(trace_meta, encoding='utf-8') as f:
+                    family = json.load(f).get('font_name')
+            except Exception:
+                pass
+        return _record(family or os.path.basename(folder), ttf,
                        license_file=_find_license_file(
                            os.path.join(folder, 'source')),
-                       store=store if os.path.exists(store) else None,
+                       store=store if complete and os.path.exists(store)
+                       else None,
                        trace_dir=folder)
     return None
 

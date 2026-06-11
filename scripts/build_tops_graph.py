@@ -58,6 +58,10 @@ for i, rec in enumerate(records):
     w.setStringAttrib('ttf', rec['ttf'])
     w.setStringAttrib('store', store)
     w.setStringAttrib('trace_dir', trace_dir)
+    # metadata.json is trace_font's LAST write = the completion
+    # marker (a partial strokes.json must not skip the trace).
+    w.setStringAttrib('trace_done', os.path.join(trace_dir,
+                                                 'metadata.json'))
     w.setStringAttrib('bundle', bundle)
     w.setStringAttrib('charset', cfg['charset'])
 '''
@@ -158,7 +162,7 @@ def build_graph(cfg):
         f'"{VENV_PYTHON}" -m penstroke trace "@ttf" "@trace_dir" '
         f'--charset @charset --quiet')
     trace.parm('expectedoutputsfrom').set('1')      # from attribute
-    trace.parm('expectedoutputattr').set('store')
+    trace.parm('expectedoutputattr').set('trace_done')
     trace.parm('pdg_cachemode').set('0')            # automatic
 
     build = topnet.createNode('pythonscript', 'build_bundle')
