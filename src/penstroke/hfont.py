@@ -114,7 +114,16 @@ def create_bundle(bundle_dir, ttf_path, license_path=None):
 
     dest_font = os.path.join(bundle_dir, FONT_NAME)
     if os.path.abspath(ttf_path) != os.path.abspath(dest_font):
-        shutil.copyfile(ttf_path, dest_font)
+        try:
+            shutil.copyfile(ttf_path, dest_font)
+        except OSError:
+            # A Houdini session with this bundle loaded mmaps font.ttf
+            # (HarfBuzz blob), which blocks write-opens on Windows. If
+            # the file already matches the source, that's fine.
+            import filecmp
+            if not (os.path.exists(dest_font)
+                    and filecmp.cmp(ttf_path, dest_font, shallow=False)):
+                raise
 
     if license_path is None:
         license_path = _find_license(ttf_path)

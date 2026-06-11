@@ -139,28 +139,34 @@ chosen rep's packed prims.
 - Acceptance met: "hello world" writes on progressively in the
   hand-edited Caveat strokes with variable width.
 
-### Phase 4 — TOPs graph
-- [ ] `font_scan.py`: folders/paths → font manifest → one work item
-      per font. Filters: family-name glob/regex, Google Fonts
-      category (METADATA.pb), weight/italic, dedupe per family,
-      variable-font instances, license.
-- [ ] Trace stage: out-of-process penstroke CLI; declared outputs
-      (master.csv, preview.html, strokes.json) for dirty-checking.
-      Charset params: ascii/latin presets + latin-ext/digits/upper/
-      lower/punct, `all`, explicit letters, unicode ranges, exclude.
+### Phase 4 — TOPs graph (MVP DONE; round-trip + wedging open)
+- [x] `src/penstroke/fontscan.py`: recursive discovery over three
+      source layouts (Google Fonts METADATA.pb family dirs, penstroke
+      trace outputs — existing stroke store attached, plain TTF
+      folders). Filters: family regex, category, dedupe, limit.
+      CLI: `python -m penstroke.fontscan`.
+- [x] TOPs graph (scripts/build_tops_graph.py → penstroke_tops.hip):
+      font_scan (Python Processor, in-process fontscan.scan, one item
+      per font) → trace_missing (Generic Generator, out-of-process
+      venv `penstroke trace` per item; expected output = `store`
+      attribute + Automatic cache mode, so already-traced fonts skip
+      the command entirely) → build_bundle (Python Script in-process:
+      outline rep always, strokes rep when a store exists, mtime
+      early-exit) → waitforall → make_index (index.html over all
+      bundles with QA sheets). Warm full-graph re-cook ≈ 7 s incl.
+      Houdini startup. Validated: 8-font cook, then full 81-bundle
+      corpus from output/handwriting.
 - [ ] Preview selection tool: save `selections/*.json` (paste path
-      stays as fallback).
-- [ ] `make_subset.py` + `merge_edits.py` stages (existing
-      export/import-corel logic re-cut): accumulating, idempotent,
-      revisions never overwrite.
-- [ ] Rep-builder fan-out per font (outline always; strokes when a
-      trace exists) + bundle finalize.
+      stays as fallback) + make_subset/merge_edits TOPs stages
+      (file-handshake Corel round-trip).
 - [ ] Wedging: wobble/taper/seed/size variants; seeds resolved
       upfront; sidecar JSON per variant (reproducibility).
-- [ ] Package as `penstroke_tops.hda` with top-level parms.
-- Acceptance: point at a google/fonts checkout, cook → outline-rep
-  hfonts for all HANDWRITING fonts; strokes rep for curated ones;
-  Corel round-trip via file drop + recook.
+- [ ] Package as `penstroke_tops.hda` with top-level parms +
+      Houdini package file (PYTHONPATH + otls) instead of the
+      pip --user editable install.
+- Remaining acceptance: Corel round-trip via file drop + recook;
+  google/fonts checkout scan (code path exists, untested against a
+  real checkout — point --roots at one).
 
 ### Phase 5 — later / optional
 - v2 glyph-ID pipeline: trace by glyph name, enable liga/calt,

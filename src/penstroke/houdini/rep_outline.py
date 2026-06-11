@@ -34,10 +34,6 @@ REP_NAME = 'outline'
 REP_KIND = 'curves2d'
 GEO_RELPATH = os.path.join('reps', REP_NAME, 'glyphs.bgeo.sc')
 
-# Quadratic->cubic conversion error bound, in font units. 1 unit at
-# 1000-2048 upm is far below visible at any rendering size.
-QU2CU_MAX_ERR_FONT_UNITS = 1.0
-
 # Flattening density for the is_hole containment test only (the saved
 # geometry keeps true beziers).
 HOLE_TEST_SAMPLES_PER_SEG = 8
@@ -47,23 +43,69 @@ HOLE_TEST_SAMPLES_PER_SEG = 8
 # Outline extraction (pure fontTools — no hou)
 # ---------------------------------------------------------------------------
 
+def _quad_as_cubic(p0, c, p1):
+    """Exact cubic equivalent of a quadratic Bezier (degree elevation)."""
+    return (p0,
+            (p0[0] + 2.0 / 3.0 * (c[0] - p0[0]),
+             p0[1] + 2.0 / 3.0 * (c[1] - p0[1])),
+            (p1[0] + 2.0 / 3.0 * (c[0] - p1[0]),
+             p1[1] + 2.0 / 3.0 * (c[1] - p1[1])),
+            p1)
+
+
+def _mid(a, b):
+    return ((a[0] + b[0]) / 2.0, (a[1] + b[1]) / 2.0)
+
+
+def _expand_qcurve(last, args):
+    """TrueType qCurveTo -> exact cubic segments.
+
+    `args` is off-curve points followed by the final on-curve point —
+    or None as the final element for an on-curve-less contour (a legal
+    TrueType compaction: the whole ring is off-curve points with the
+    on-curves implied at every midpoint; fontTools emits it as a
+    single qCurveTo ending in None with no moveTo). Implied on-curve
+    points sit between consecutive off-curves. The conversion to
+    cubic is exact (degree elevation), no approximation.
+
+    Returns (segments, start_override): start_override is the contour
+    start for the on-curve-less case, else None.
+    """
+    segs = []
+    if args[-1] is None:
+        offs = [tuple(p) for p in args[:-1]]
+        start = _mid(offs[-1], offs[0])
+        cur = start
+        for i, c in enumerate(offs):
+            end = _mid(c, offs[(i + 1) % len(offs)])
+            segs.append(_quad_as_cubic(cur, c, end))
+            cur = end
+        return segs, start
+    *offs, final = [tuple(p) for p in args]
+    cur = last
+    for i, c in enumerate(offs):
+        end = _mid(c, offs[i + 1]) if i < len(offs) - 1 else final
+        segs.append(_quad_as_cubic(cur, c, end))
+        cur = end
+    if not offs:                      # qCurveTo with no off-curves = line
+        segs.append(_line_as_cubic(last, final))
+    return segs, None
+
+
 def extract_glyph_contours(glyph_set, glyph_name, scale):
     """Glyph outlines as closed cubic contours in em space.
 
     Returns [contour, ...] where contour = [(p0, c1, c2, p3), ...] of
     (x, y) tuples, each contour a closed chain (last p3 == first p0).
-    Quadratic (glyf) outlines are converted to cubics; CFF cubics pass
-    through. Components are decomposed by the glyph set's draw().
+    Quadratic (glyf) outlines are lifted to cubics exactly; CFF cubics
+    pass through (super-beziers decomposed). Components are decomposed
+    by the glyph set's draw().
     """
     from fontTools.pens.recordingPen import RecordingPen
-    from fontTools.pens.qu2cuPen import Qu2CuPen
+    from fontTools.pens.basePen import decomposeSuperBezierSegment
 
     rec = RecordingPen()
-    pen = Qu2CuPen(rec, max_err=QU2CU_MAX_ERR_FONT_UNITS, all_cubic=True)
-    glyph_set[glyph_name].draw(pen)
-
-    def em(pt):
-        return (pt[0] * scale, pt[1] * scale)
+    glyph_set[glyph_name].draw(rec)
 
     contours = []
     current = None
@@ -73,23 +115,39 @@ def extract_glyph_contours(glyph_set, glyph_name, scale):
         if op == 'moveTo':
             current = []
             contours.append(current)
-            start = last = em(args[0])
+            start = last = tuple(args[0])
         elif op == 'lineTo':
-            p = em(args[0])
+            p = tuple(args[0])
             current.append(_line_as_cubic(last, p))
             last = p
         elif op == 'curveTo':
-            # all_cubic guarantees exactly two control points.
-            c1, c2, p = (em(a) for a in args)
-            current.append((last, c1, c2, p))
-            last = p
+            pts = [tuple(a) for a in args]
+            if len(pts) == 3:
+                current.append((last, pts[0], pts[1], pts[2]))
+            else:                     # super-bezier (rare, CFF)
+                for c1, c2, p in decomposeSuperBezierSegment(pts):
+                    current.append((last, c1, c2, p))
+                    last = p
+            last = pts[-1]
+        elif op == 'qCurveTo':
+            if current is None:       # on-curve-less contour: no moveTo
+                current = []
+                contours.append(current)
+                last = None
+            segs, start_override = _expand_qcurve(last, args)
+            if start_override is not None:
+                start = start_override
+            current.extend(segs)
+            last = segs[-1][3] if segs else last
         elif op in ('closePath', 'endPath'):
             if current and last != start:
                 current.append(_line_as_cubic(last, start))
             current = None
             last = start
-    # Drop degenerate contours (single point, zero segments).
-    return [c for c in contours if c]
+    # Drop degenerate contours (single point, zero segments) and scale
+    # to em space.
+    return [[tuple((x * scale, y * scale) for (x, y) in seg)
+             for seg in c] for c in contours if c]
 
 
 def _line_as_cubic(p0, p1):
@@ -242,7 +300,7 @@ def build_outline_rep(ttf_path, bundle_dir, charset='latin', verbose=True):
         provenance={'builder': 'rep_outline',
                     'houdini': hou.applicationVersionString(),
                     'charset': charset,
-                    'qu2cu_max_err_font_units': QU2CU_MAX_ERR_FONT_UNITS})
+                    'quad_to_cubic': 'exact degree elevation'})
 
     contact_sheet(built, os.path.join(bundle_dir, 'qa', 'outline.png'))
     return len(built), geo_path
