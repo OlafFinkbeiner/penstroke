@@ -160,18 +160,38 @@ def build_graph(cfg):
     scan_node.parm('generate').set(
         SCAN_CODE.format(cfg=json.dumps(cfg)))
 
-    trace = topnet.createNode('genericgenerator', 'trace_missing')
+    # Python Processor with the command BAKED per item at generation
+    # time. Attribute tokens (@ttf etc.) are not expanded in this
+    # node's command parm — observed empirically, even with backtick
+    # escapes — so baking real values is the reliable route. Items
+    # whose trace is already complete get no command (= instant cook),
+    # which is the cache. The .cmd launcher scrubs PYTHONPATH/
+    # PYTHONHOME, which PDG jobs inherit from Houdini (venv python +
+    # Houdini stdlib = SRE module mismatch crash).
+    # Forward slashes: the path is injected textually into Python
+    # source below, where backslashes would act as string escapes.
+    launcher = os.path.join(_REPO, 'scripts',
+                            'run_trace.cmd').replace(os.sep, '/')
+    trace = topnet.createNode('pythonprocessor', 'trace_missing')
     trace.setInput(0, scan_node)
-    trace.parm('windowscommand').set(
-        f'"{VENV_PYTHON}" -m penstroke trace "@ttf" "@trace_dir" '
-        f'--charset @charset --quiet')
-    trace.parm('expectedoutputsfrom').set('1')      # from attribute
-    trace.parm('expectedoutputattr').set('trace_done')
-    trace.parm('pdg_cachemode').set('0')            # automatic
+    trace.parm('generate').set('''
+import os
+for upstream_item in upstream_items:
+    w = item_holder.addWorkItem(parent=upstream_item)
+    if not os.path.exists(upstream_item.stringAttribValue('trace_done')):
+        w.setCommand('"{launcher}" "%s" "%s" %s' % (
+            upstream_item.stringAttribValue('ttf'),
+            upstream_item.stringAttribValue('trace_dir'),
+            upstream_item.stringAttribValue('charset')))
+'''.replace('{launcher}', launcher))
 
     build = topnet.createNode('pythonscript', 'build_bundle')
     build.setInput(0, trace)
     build.parm('inprocess').set(True)
+    # Generate only from COOKED upstream items: a failed trace then
+    # produces no bundle at all (visible in the index) instead of a
+    # quietly degraded one.
+    build.parm('pdg_workitemgeneration').set('0')
     build.parm('script').set(BUILD_CODE)
 
     wait = topnet.createNode('waitforall', 'wait_all')
