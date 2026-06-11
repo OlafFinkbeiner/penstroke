@@ -182,6 +182,31 @@ with open(os.path.join(bundles_root, 'index.html'), 'w',
           encoding='utf-8') as f:
     f.write(doc)
 print('index:', os.path.join(bundles_root, 'index.html'))
+
+# Also refresh the PREVIEWS index over the trace folders (separate
+# file, batch_handwriting convention: links each font's interactive
+# preview.html with the glyph-selection tool).
+traces_root = hou.node('__TOPNET__').evalParm('tracesroot')
+prows = []
+for d in sorted(os.listdir(traces_root)):
+    full = os.path.join(traces_root, d)
+    if not os.path.isdir(full):
+        continue
+    if os.path.exists(os.path.join(full, 'preview.html')):
+        prows.append('<li><a href="%s/preview.html">%s</a></li>'
+                     % (html.escape(d), html.escape(d)))
+    else:
+        prows.append('<li>%s - no preview</li>' % html.escape(d))
+pdoc = ('<!DOCTYPE html><meta charset="utf-8">'
+        '<title>penstroke - previews</title>'
+        '<style>body{font-family:system-ui;margin:40px}'
+        'li{margin:3px 0}</style>'
+        '<h1>Previews (%d)</h1><ul>' % len(prows)
+        + ''.join(prows) + '</ul>')
+with open(os.path.join(traces_root, 'index.html'), 'w',
+          encoding='utf-8') as f:
+    f.write(pdoc)
+print('previews index:', os.path.join(traces_root, 'index.html'))
 '''
 
 
