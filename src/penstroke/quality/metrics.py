@@ -49,10 +49,15 @@ def coverage(mask, traced):
         # Coarse but adequate for coverage estimation.
         for x, y, w in zip(xs, ys, widths):
             r = max(1.0, w / 2.0)
-            y0 = max(0, int(y - r))
-            y1 = min(H, int(y + r) + 1)
-            x0 = max(0, int(x - r))
-            x1 = min(W, int(x + r) + 1)
+            # Clamp the stamp to the canvas. A point far off-canvas
+            # would otherwise yield a NEGATIVE slice end, which wraps
+            # around in numpy and breaks the broadcast.
+            y0 = min(max(0, int(y - r)), H)
+            y1 = max(y0, min(H, int(y + r) + 1))
+            x0 = min(max(0, int(x - r)), W)
+            x1 = max(x0, min(W, int(x + r) + 1))
+            if y1 <= y0 or x1 <= x0:
+                continue   # stamp entirely outside the canvas
             yy, xx = np.ogrid[y0:y1, x0:x1]
             disk = (yy - y) ** 2 + (xx - x) ** 2 <= r * r
             drew[y0:y1, x0:x1] |= disk

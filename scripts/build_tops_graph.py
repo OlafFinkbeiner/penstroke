@@ -85,6 +85,10 @@ def current(geo_path, src_path):
 
 need_outline = True
 need_strokes = os.path.exists(store)
+if not need_strokes:
+    print('WARNING: no stroke store for',
+          work_item.attribValue('family'),
+          '- trace failed or skipped; building outline-only bundle')
 if os.path.exists(os.path.join(bundle, hfont.MANIFEST_NAME)):
     try:
         hf = hfont.HFont(bundle)
