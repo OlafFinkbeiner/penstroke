@@ -5,10 +5,11 @@
         [--bundles DIR] [--traces DIR] [--hip PATH] [--no-cook]
     hython scripts/build_tops_graph.py --make-hda    # write the HDA
 
-The saved .hip is self-contained and GUI-friendly: all configuration
-(roots, filters, charset, output dirs) lives as spare parameters on
-the /obj/penstroke_tops network — edit them in Houdini and re-cook,
-no code involved.
+The saved .hip holds one INSTANCE of the penstroke::tops HDA with all
+configuration (roots, filters, charset, output dirs) on its top-level
+parameters — edit them in Houdini and re-cook, no code involved. The
+HDA is the single definition of the graph; after changing the graph
+code, re-run --make-hda and every scene picks it up.
 
 --make-hda packages the same graph as houdini/otls/penstroke_tops.hda
 (type penstroke::tops). Together with the Houdini package file (see
@@ -426,7 +427,13 @@ def main(argv=None):
         print(f'saved {path} (type {HDA_TYPE})')
         return 0
 
-    topnet, index = build_graph()
+    # The hip contains an INSTANCE of the penstroke::tops HDA — the
+    # graph has exactly one definition (the HDA); changing it means
+    # re-running --make-hda, not rebuilding hips. installFile makes
+    # this script work even without the Houdini package installed.
+    hou.hda.installFile(os.path.abspath(args.hda))
+    topnet = hou.node('/obj').createNode(HDA_TYPE, 'penstroke_tops')
+    index = topnet.node('penstroke_tops/make_index')
     topnet.parm('roots').set(
         '\n'.join(os.path.abspath(r) for r in args.roots))
     topnet.parm('tracesroot').set(os.path.abspath(args.traces))
