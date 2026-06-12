@@ -16,8 +16,11 @@ through files in TWO global drop folders, picked up on the next cook
                         sel-<font>-<hash>.csv for the CorelDRAW import
                         macro (plus a .outgoing.json sidecar recording
                         what was written); the user edits in Corel and
-                        exports BACK ONTO THE SAME FILE — or any name
-                        keeping the sel-<font>- prefix. A CSV counts
+                        exports BACK ONTO THE SAME FILE — or under any
+                        name that contains the font's name (Corel's
+                        default '<doctitle>_edited.csv' qualifies as
+                        long as the document kept the font in its
+                        name). A CSV counts
                         as an edited return when it has no pristine
                         sidecar (mtime check), and as merged once its
                         .imported.json marker is newer. Nothing is
@@ -118,13 +121,30 @@ def _trace_dir_names(trace_dir):
     return names
 
 
-def _filename_slug(path):
-    """Font slug from a sel-<slug>-<hash>* filename, or None."""
-    stem = os.path.splitext(os.path.basename(path))[0]
-    parts = stem.split('-')
-    if len(parts) >= 3 and parts[0] == 'sel':
-        return parts[1]
-    return None
+def _name_candidates(path):
+    """Every font slug a filename could be naming: all concatenations
+    of consecutive alphanumeric runs in the stem. Covers our own
+    sel-<slug>-<hash>.csv as well as Corel's free-form save names
+    ('allison-e570ba_edited.csv', 'aguafina script fix 2.csv', ...) —
+    matching is exact against full normalized family names, so a
+    fragment like 'sans' never routes to 'opensans'."""
+    stem = os.path.splitext(os.path.basename(path))[0].lower()
+    tokens, cur = [], ''
+    for c in stem:
+        if c.isalnum():
+            cur += c
+        elif cur:
+            tokens.append(cur)
+            cur = ''
+    if cur:
+        tokens.append(cur)
+    cands = set()
+    for i in range(len(tokens)):
+        acc = ''
+        for j in range(i, len(tokens)):
+            acc += tokens[j]
+            cands.add(acc)
+    return cands
 
 
 def selections_for(trace_dir, inbox=None):
@@ -190,11 +210,11 @@ def _is_pristine_export(csv):
 
 def _routes_to(csv, names):
     """Does this exchange-folder CSV belong to a font with `names`?
-    Filename prefix first (sel-<slug>-...), outgoing sidecar second
-    (covers selections without a slug in their name)."""
-    slug = _filename_slug(csv)
-    if slug is not None:
-        return slug in names
+    Filename tokens first (works for sel-<slug>-<hash> AND Corel's
+    free-form save names), outgoing sidecar second (covers files whose
+    name carries no font at all)."""
+    if _name_candidates(csv) & names:
+        return True
     marker = outgoing_marker_path(csv)
     if os.path.exists(marker):
         try:

@@ -246,6 +246,17 @@ def test_handshake_pending_logic():
                                                         encoding='utf-8')
         assert handshake.pending_edits(tmpdir,
                                        corel_dir=str(corel)) == []
+        # Corel's free-form save names route too, as long as the font
+        # name appears in the filename ('<doctitle>_edited.csv').
+        time.sleep(0.01)
+        freeform = corel / f'{myslug}-c0ffee_edited.csv'
+        freeform.write_text('H;...edited2', encoding='utf-8')
+        assert handshake.pending_edits(
+            tmpdir, corel_dir=str(corel)) == [str(freeform)]
+        time.sleep(0.01)
+        handshake.write_imported_marker(str(freeform), ['b'])
+        assert handshake.pending_edits(tmpdir,
+                                       corel_dir=str(corel)) == []
         print("✓ handshake pending logic (selections + edits + markers + "
               "inbox routing + corel exchange)")
 

@@ -50,5 +50,6 @@ houdini/otls/backup/
 # Global selections inbox (user drop folder for preview.html sel-*.json)
 /selections/
 
-# Corel exchange files (sync-edits round-trip; the macro .bas stays tracked)
-/corel/sel-*
+# Corel exchange folder: working files only, the macro stays tracked
+/corel/*
+!/corel/penstroke_corel.bas

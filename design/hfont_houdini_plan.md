@@ -202,9 +202,11 @@ chosen rep's packed prims.
 - [ ] Package as `penstroke_tops.hda` with top-level parms +
       Houdini package file (PYTHONPATH + otls) instead of the
       pip --user editable install.
-- Remaining acceptance: one REAL Corel pass through the file
-  handshake (the no-Corel round-trip is covered by tests; the macro
-  side is unchanged and was validated in the 5-round Caveat edits).
+- Acceptance met (2026-06-12): one real Corel pass through the
+  handshake — Allison, 71 glyphs selected in preview.html, exported
+  via the inbox, edited in Corel, saved back as the free-form
+  'allison-e570ba_edited.csv' (which prompted generalizing return
+  routing to filename-token matching), merged + strokes rep rebuilt.
 
 ### Phase 5 — later / optional
 - v2 glyph-ID pipeline: trace by glyph name, enable liga/calt,

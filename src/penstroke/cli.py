@@ -33,7 +33,8 @@ Two global drop folders, any font:
     2. penstroke sync-edits <output_dir> --inbox ... --corel ...
        -> writes <corel>/sel-<font>-<hash>.csv
     3. CorelDRAW: import that CSV, edit, export BACK ONTO THE SAME
-       FILE (or any sel-<font>-* name in the same folder).
+       FILE (or any name containing the font's name, e.g. Corel's
+       default '<doctitle>_edited.csv', in the same folder).
     4. The next sync detects the re-saved file as an edited return,
        merges it, marks it imported, rebuilds the output folder.
 Per-font <output_dir>/selections/ and <output_dir>/edits/ still work
