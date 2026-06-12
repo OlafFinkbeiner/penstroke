@@ -433,6 +433,72 @@ def read_edit_csv(csv_path):
     return header, glyphs
 
 
+def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
+    """Merge an edited CSV into a trace folder and rebuild it.
+
+    The full import-corel operation: parse the CSV, resolve glyph
+    identity via the page name (the Corel export macro doesn't know
+    codepoints), resample widths from the font ink, exchange ONLY the
+    glyphs present in the CSV in the stroke store, re-render the whole
+    output folder, and write the .imported.json marker that makes
+    `penstroke sync-edits` idempotent.
+
+    Returns (n_exchanged, n_kept).
+    """
+    from penstroke import handshake
+    from penstroke.pipeline import trace_font, safe_filename
+
+    with open(os.path.join(output_dir, 'metadata.json'),
+              encoding='utf-8') as f:
+        meta = json.load(f)
+    import glob as _glob
+    fonts = sorted(_glob.glob(os.path.join(output_dir, 'source', '*.ttf')))
+    if not fonts:
+        raise FileNotFoundError(
+            f'no source font found under {output_dir}/source/')
+    ttf = fonts[0]
+    header, glyphs = read_edit_csv(edited_csv)
+
+    # Glyph identity travels via the page name (= safe filename stem);
+    # build the reverse map from metadata. chr(0) = "unknown" from the
+    # Corel macro.
+    safe_to_char = {safe_filename(ch).rsplit('.', 1)[0]: ch
+                    for ch in meta['letters']}
+    unknown_char = chr(0)
+
+    edited = {}
+    for g in glyphs:
+        ch = safe_to_char.get(g['safe'])
+        if ch is None and g['char'] != unknown_char:
+            ch = g['char']
+        if ch is None or not g['strokes']:
+            continue
+        traced = resample_widths(g['strokes'], ttf, ch, size)
+        if traced:
+            edited[ch] = traced
+
+    # Exchange ONLY the glyphs present in the CSV; everything else
+    # keeps its current strokes (from the store written at trace /
+    # previous import time).
+    current = load_stroke_store(output_dir) or {}
+    current.update(edited)
+
+    def glyph_source(ch):
+        if ch not in current:
+            return None
+        mask, m = rasterize_glyph(ttf, ch, size=size)
+        return mask, current[ch], 'edited' if ch in edited else 'kept', m
+
+    trace_font(ttf, output_dir,
+               font_name=meta['font_name'],
+               letters=''.join(current.keys()),
+               size=size,
+               glyph_source=glyph_source,
+               verbose=verbose)
+    handshake.write_imported_marker(edited_csv, list(edited.keys()))
+    return len(edited), len(current) - len(edited)
+
+
 def resample_widths(strokes_xy, ttf_path, char, size):
     """Turn edited centerlines into (xs, ys, widths) strokes.
 

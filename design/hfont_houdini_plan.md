@@ -168,17 +168,43 @@ chosen rep's packed prims.
       trace identity = folder basename (no duplicate bundles from
       TTF-stem names), embedded callbacks import hou explicitly
       (absent in cold-loaded generate callbacks).
-- [ ] Preview selection tool: save `selections/*.json` (paste path
-      stays as fallback) + make_subset/merge_edits TOPs stages
-      (file-handshake Corel round-trip).
+- [x] Preview selection tool + file-handshake round-trip stages.
+      preview.html "Save selection" downloads `sel-<font>-<hash>.json`
+      (copy-command stays as fallback) for the GLOBAL selections inbox
+      `<repo>/selections/` (one drop folder for all fonts, routed per
+      font via the JSON's "font" field, normalized matching; the
+      `selectionsroot` parm / `sync-edits --inbox` /
+      `$PENSTROKE_SELECTIONS`). The Corel exchange is ONE global
+      folder too (`<repo>/corel/`, `corelroot` parm / `--corel` /
+      `$PENSTROKE_COREL`): sync writes `sel-<font>-<hash>.csv` (+
+      `.outgoing.json` sidecar) there; Corel exports back ONTO THE
+      SAME FILE (or any `sel-<font>-*` name) and the mtime-vs-sidecar
+      check flips it to a pending return — nothing is moved or
+      deleted. Per-font `<trace_dir>/selections/` and `edits/` still
+      work as fallbacks (e.g. arbitrarily named Corel exports).
+      Conventions + pending checks live in `penstroke/handshake.py`
+      (dependency-light, hython-importable); `penstroke sync-edits`
+      merges pending `edits/*.csv` (Corel exports; `.imported.json`
+      markers make it idempotent), then writes `subsets/*_edit.csv`
+      for pending selections. make_subset/merge_edits collapsed into
+      ONE `sync_edits` TOPs stage (trace → sync_edits → build_bundle):
+      the command is baked only for fonts with pending files, and a
+      merged edit touches strokes.json so build_bundle's mtime check
+      rebuilds the strokes rep in the same cook. Validated end-to-end
+      in TOPs (selection drop → recook → subset CSV; idempotent) and
+      in tests/test_smoke.py (full no-Corel round-trip: selection →
+      subset → edits drop → merge → marker). Launcher:
+      scripts/run_penstroke.cmd (generic env-scrubbing sibling of
+      run_trace.cmd). penstroke_tops.hip rebuilt with the new stage,
+      same GUI config.
 - [ ] Wedging: wobble/taper/seed/size variants; seeds resolved
       upfront; sidecar JSON per variant (reproducibility).
 - [ ] Package as `penstroke_tops.hda` with top-level parms +
       Houdini package file (PYTHONPATH + otls) instead of the
       pip --user editable install.
-- Remaining acceptance: Corel round-trip via file drop + recook;
-  google/fonts checkout scan (code path exists, untested against a
-  real checkout — point --roots at one).
+- Remaining acceptance: one REAL Corel pass through the file
+  handshake (the no-Corel round-trip is covered by tests; the macro
+  side is unchanged and was validated in the 5-round Caveat edits).
 
 ### Phase 5 — later / optional
 - v2 glyph-ID pipeline: trace by glyph name, enable liga/calt,

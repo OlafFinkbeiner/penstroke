@@ -43,6 +43,27 @@ src/penstroke/
 ├── tracer.py              THE tracer — junction-first graph decomposition.
 │                          See module docstring for the full pipeline.
 │
+├── hfont.py               The .hfont bundle format (manifest + reps over a
+│                          source TTF) — the ONE implementation, hou-free
+├── layout.py              Pure-python text layout engine (HarfBuzz shaping,
+│                          greedy breaker, justify) — called by the Houdini
+│                          text_layout SOP, benchmarkable standalone
+├── charset.py             Charset presets, importable under hython
+│                          (no scipy/skimage)
+├── editround.py           Corel CSV edit-round workflow (export/merge)
+├── handshake.py           File-handshake conventions for the edit round:
+│                          TWO global drop folders at repo root —
+│                          selections/ (preview.html sel-*.json, routed
+│                          per font) and corel/ (CSV out AND edited
+│                          return, same file both ways, mtime+sidecar
+│                          state); dependency-light, hython-importable
+├── fontscan.py            Font-source discovery (Google Fonts checkouts,
+│                          trace outputs, plain TTF dirs) for the TOPs graph
+│
+├── houdini/               Builders that run under hython (need `hou`)
+│   ├── rep_outline.py     TTF beziers → em-space curves2d rep
+│   └── rep_strokes.py     strokes.json → em-space centerline rep
+│
 ├── render/                Output formats
 │   ├── svg.py             Path-building primitives (ribbon polygon, centerline)
 │   ├── glyph.py           Single-letter SVG with positioning metadata
@@ -62,12 +83,17 @@ src/penstroke/
     └── report.py          Assemble metrics into report.md and metadata.json
 
 design/                    Active design docs
+├── hfont_houdini_plan.md  Houdini TOPs + hfont plan (phase status lives here)
 ├── qa_cleanup_spec.json   QA/cleanup architecture (multi-lens synthesis)
 ├── epst_batch_qa_v2.json  Current 6-font QA: issue classes + verdicts
 └── cascade_results_v2.json Deterministic detector findings + calibration notes
 
 scripts/batch_google_fonts.py   Batch runner (edit FONTS list at top)
+scripts/build_tops_graph.py     Builds penstroke_tops.hip (TOPs batch graph)
+scripts/build_text_layout_hda.py Builds penstroke::text_layout HDA
+scripts/run_trace.cmd           PDG job launcher (scrubs Houdini's PYTHONPATH)
 tests/test_smoke.py             End-to-end smoke tests
+tests/test_layout.py            Layout engine tests (no Houdini needed)
 tests/fixtures/caveat.ttf       OFL-licensed test font
 ```
 
@@ -193,8 +219,14 @@ fix the mechanism. Where to look:
    serif fonts (short serif stubs as separate mini-strokes — consider
    width-scaled spur handling), occasional stray on extreme cursive
    terminals (an on-ink clip pass would be a cheap safety net).
-3. **Houdini JSON export not wired into the pipeline**
-   (`render/houdini.py` exists; `trace_font` doesn't call it).
+3. **Houdini integration: phase 4 remainder.** Phases 1-3 of
+   design/hfont_houdini_plan.md are done (hfont standard, layout
+   engine + text_layout HDA, strokes rep, handwriting demo), and the
+   TOPs graph includes the Corel file-handshake stage (sync_edits;
+   `penstroke sync-edits`). Still open: wedging variants, packaging
+   as penstroke_tops.hda + Houdini package file, one real Corel pass
+   through the handshake. (`render/houdini.py` is the legacy
+   per-letter JSON export, superseded by the hfont strokes rep.)
 4. **Non-Latin scripts**: the tracer is script-agnostic by construction
    (pure geometry) but untested on Greek/Cyrillic/Hebrew since the
    Hershey-based Greek path was removed in v0.2.

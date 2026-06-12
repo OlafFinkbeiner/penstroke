@@ -46,3 +46,9 @@ TODO.local.md
 # Generated trace output
 output/
 houdini/otls/backup/
+
+# Global selections inbox (user drop folder for preview.html sel-*.json)
+/selections/
+
+# Corel exchange files (sync-edits round-trip; the macro .bas stays tracked)
+/corel/sel-*

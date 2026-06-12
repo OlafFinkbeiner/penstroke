@@ -23,6 +23,17 @@ Graph (one work item per font):
         @attrib expansion (verified empirically). Items whose
         metadata.json (trace_font's LAST write) exists get no command
         — instant cook, which is the cache/resume mechanism.
+    sync_edits (Python Processor, command items)
+        The Corel file handshake (penstroke/handshake.py): a command
+        (`penstroke sync-edits`, out-of-process via run_penstroke.cmd)
+        is baked ONLY for fonts with pending selections or edits/*.csv,
+        so the stage is free when nothing changed. Selections come from
+        the global inbox (the `selectionsroot` parm — sel-*.json routed
+        per font via their "font" field) or a font's own selections/;
+        Corel CSVs go out to and come back from the global exchange
+        folder (`corelroot` parm), same file both ways. Merged
+        edits update strokes.json, which build_bundle's mtime check
+        then picks up in the same cook.
     build_bundle (Python Script, in-process)
         Outline rep always; strokes rep when a store exists; cheap
         mtime early-exit. Generates only from COOKED upstream items,
@@ -43,10 +54,12 @@ if _SRC not in sys.path:
 
 TOPNET_PATH = '/obj/penstroke_tops'
 DEFAULT_ROOTS = [os.path.join(_REPO, 'output', 'handwriting')]
-DEFAULT_BUNDLES = os.path.join(_REPO, 'output', 'hfont_dev', 'bundles')
+DEFAULT_BUNDLES = os.path.join(_REPO, 'output', 'hfont_dev', 'hfonts')
 DEFAULT_TRACES = os.path.join(_REPO, 'output', 'handwriting')
 DEFAULT_HIP = os.path.join(_REPO, 'output', 'hfont_dev',
                            'penstroke_tops.hip')
+DEFAULT_SELECTIONS = os.path.join(_REPO, 'selections')
+DEFAULT_COREL = os.path.join(_REPO, 'corel')
 
 # Code templates. Tokens (__TOKEN__) are substituted with .replace()
 # — NOT str.format — so braces and backslashes in the code stay inert.
@@ -96,6 +109,25 @@ for upstream_item in upstream_items:
             upstream_item.stringAttribValue('trace_dir'),
             upstream_item.stringAttribValue('charset'),
             upstream_item.stringAttribValue('name_norm')))
+'''
+
+SYNC_CODE = '''
+import hou
+from penstroke.handshake import has_pending
+
+top = hou.node('__TOPNET__')
+inbox = top.evalParm('selectionsroot')
+corel = top.evalParm('corelroot')
+for upstream_item in upstream_items:
+    w = item_holder.addWorkItem(parent=upstream_item)
+    trace_dir = upstream_item.stringAttribValue('trace_dir')
+    if has_pending(trace_dir, inbox=inbox or None, corel_dir=corel or None):
+        cmd = '"__LAUNCHER__" sync-edits "%s"' % trace_dir
+        if inbox:
+            cmd += ' --inbox "%s"' % inbox
+        if corel:
+            cmd += ' --corel "%s"' % corel
+        w.setCommand(cmd)
 '''
 
 BUILD_CODE = '''
@@ -172,10 +204,10 @@ for man_path in sorted(glob.glob(os.path.join(bundles_root, '*.hfont',
             qa.append('<a href="%s/qa/%s.png">%s</a>' % (rel, rep, rep))
     rows.append('<tr><td>%s</td><td>%s</td><td>%s</td></tr>'
                 % (html.escape(man['family']), reps, ' '.join(qa)))
-doc = ('<!DOCTYPE html><meta charset="utf-8"><title>hfont bundles</title>'
+doc = ('<!DOCTYPE html><meta charset="utf-8"><title>hfonts</title>'
        '<style>body{font-family:system-ui;margin:40px}'
        'td{padding:4px 16px 4px 0}</style>'
-       '<h1>hfont bundles (%d)</h1>' % len(rows)
+       '<h1>hfonts (%d)</h1>' % len(rows)
        + '<table><tr><th>family</th><th>reps</th><th>QA</th></tr>'
        + ''.join(rows) + '</table>')
 with open(os.path.join(bundles_root, 'index.html'), 'w',
@@ -224,8 +256,23 @@ def _topnet_parm_templates():
             help='Where fresh traces land (existing trace dirs are '
                  'matched by family name).'),
         hou.StringParmTemplate(
-            'bundlesroot', 'Bundles Root', 1,
+            'bundlesroot', 'Hfonts Root', 1,
             string_type=hou.stringParmType.FileReference),
+        hou.StringParmTemplate(
+            'selectionsroot', 'Selections Inbox', 1,
+            string_type=hou.stringParmType.FileReference,
+            help='Global drop folder for preview.html selection files '
+                 '(sel-<font>-<hash>.json); routed to each font via '
+                 'the "font" field. Per-font <trace_dir>/selections/ '
+                 'works too.'),
+        hou.StringParmTemplate(
+            'corelroot', 'Corel Exchange', 1,
+            string_type=hou.stringParmType.FileReference,
+            help='Global Corel exchange folder, both directions: '
+                 'sync writes sel-<font>-<hash>.csv for the Corel '
+                 'import macro; the export macro saves back onto the '
+                 'same file (or any sel-<font>-* name) and the next '
+                 'cook merges it.'),
         hou.StringParmTemplate(
             'namefilter', 'Family Name Regex', 1),
         hou.StringParmTemplate(
@@ -262,8 +309,19 @@ def build_graph():
     trace.parm('generate').set(
         TRACE_CODE.replace('__LAUNCHER__', launcher))
 
+    sync_launcher = os.path.join(_REPO, 'scripts',
+                                 'run_penstroke.cmd').replace(os.sep, '/')
+    sync = topnet.createNode('pythonprocessor', 'sync_edits')
+    sync.setInput(0, trace)
+    # Generate from cooked items only: a failed trace must not get a
+    # sync command (its store/metadata may be half-written).
+    sync.parm('pdg_workitemgeneration').set('0')
+    sync.parm('generate').set(
+        SYNC_CODE.replace('__LAUNCHER__', sync_launcher)
+                 .replace('__TOPNET__', TOPNET_PATH))
+
     build = topnet.createNode('pythonscript', 'build_bundle')
-    build.setInput(0, trace)
+    build.setInput(0, sync)
     build.parm('inprocess').set(True)
     build.parm('pdg_workitemgeneration').set('0')   # from cooked items
     build.parm('script').set(BUILD_CODE)
@@ -288,6 +346,10 @@ def main(argv=None):
     ap.add_argument('--roots', nargs='+', default=DEFAULT_ROOTS)
     ap.add_argument('--bundles', default=DEFAULT_BUNDLES)
     ap.add_argument('--traces', default=DEFAULT_TRACES)
+    ap.add_argument('--selections', default=DEFAULT_SELECTIONS,
+                    help='Global selections inbox folder.')
+    ap.add_argument('--corel', default=DEFAULT_COREL,
+                    help='Global Corel exchange folder.')
     ap.add_argument('--name', default='')
     ap.add_argument('--category', default='')
     ap.add_argument('--charset', default='latin',
@@ -302,6 +364,10 @@ def main(argv=None):
         '\n'.join(os.path.abspath(r) for r in args.roots))
     topnet.parm('tracesroot').set(os.path.abspath(args.traces))
     topnet.parm('bundlesroot').set(os.path.abspath(args.bundles))
+    topnet.parm('selectionsroot').set(os.path.abspath(args.selections))
+    os.makedirs(os.path.abspath(args.selections), exist_ok=True)
+    topnet.parm('corelroot').set(os.path.abspath(args.corel))
+    os.makedirs(os.path.abspath(args.corel), exist_ok=True)
     topnet.parm('namefilter').set(args.name)
     topnet.parm('category').set(args.category)
     topnet.parm('charset').set(args.charset)
