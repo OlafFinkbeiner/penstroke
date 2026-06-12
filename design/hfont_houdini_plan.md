@@ -199,9 +199,21 @@ chosen rep's packed prims.
       same GUI config.
 - [ ] Wedging: wobble/taper/seed/size variants; seeds resolved
       upfront; sidecar JSON per variant (reproducibility).
-- [ ] Package as `penstroke_tops.hda` with top-level parms +
-      Houdini package file (PYTHONPATH + otls) instead of the
-      pip --user editable install.
+- [x] Packaged as `penstroke::tops` HDA + Houdini package file.
+      `build_tops_graph.py --make-hda` → houdini/otls/
+      penstroke_tops.hda (a topnet can't become an HDA directly —
+      wrapped in an OBJ subnet carrying the parm interface; embedded
+      callbacks find their config by walking ancestors for the parms
+      and the repo via the imported penstroke package, so NO absolute
+      paths are baked in; parm defaults reference $PENSTROKE).
+      `install_houdini_package.py` writes <prefs>/packages/
+      penstroke.json ($PENSTROKE, PYTHONPATH += src, HOUDINI_PATH +=
+      houdini/ → otls auto-scan), replacing the pip --user editable
+      install. Verified in a fresh hython session: tab-create a
+      renamed instance, defaults expand, 2-font cook through the HDA;
+      plain-topnet hip path re-verified too. GOTCHA: `self` IS
+      available in pythonprocessor/pythonscript TOP callbacks and
+      self.topNode() returns the hou node (probed empirically).
 - Acceptance met (2026-06-12): one real Corel pass through the
   handshake — Allison, 71 glyphs selected in preview.html, exported
   via the inbox, edited in Corel, saved back as the free-form

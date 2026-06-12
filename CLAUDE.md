@@ -89,9 +89,13 @@ design/                    Active design docs
 └── cascade_results_v2.json Deterministic detector findings + calibration notes
 
 scripts/batch_google_fonts.py   Batch runner (edit FONTS list at top)
-scripts/build_tops_graph.py     Builds penstroke_tops.hip (TOPs batch graph)
+scripts/build_tops_graph.py     Builds penstroke_tops.hip; --make-hda
+                                packages it as the penstroke::tops HDA
 scripts/build_text_layout_hda.py Builds penstroke::text_layout HDA
+scripts/install_houdini_package.py Installs <prefs>/packages/penstroke.json
+                                ($PENSTROKE, PYTHONPATH, otls auto-scan)
 scripts/run_trace.cmd           PDG job launcher (scrubs Houdini's PYTHONPATH)
+scripts/run_penstroke.cmd       Same, generic (any penstroke subcommand)
 tests/test_smoke.py             End-to-end smoke tests
 tests/test_layout.py            Layout engine tests (no Houdini needed)
 tests/fixtures/caveat.ttf       OFL-licensed test font
@@ -223,9 +227,9 @@ fix the mechanism. Where to look:
    design/hfont_houdini_plan.md are done (hfont standard, layout
    engine + text_layout HDA, strokes rep, handwriting demo), and the
    TOPs graph includes the Corel file-handshake stage (sync_edits;
-   `penstroke sync-edits`). Still open: wedging variants, packaging
-   as penstroke_tops.hda + Houdini package file, one real Corel pass
-   through the handshake. (`render/houdini.py` is the legacy
+   `penstroke sync-edits`, validated with real Corel passes) and is
+   packaged as the penstroke::tops HDA + Houdini package file. Still
+   open: wedging variants. (`render/houdini.py` is the legacy
    per-letter JSON export, superseded by the hfont strokes rep.)
 4. **Non-Latin scripts**: the tracer is script-agnostic by construction
    (pure geometry) but untested on Greek/Cyrillic/Hebrew since the

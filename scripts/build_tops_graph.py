@@ -3,11 +3,20 @@
     hython scripts/build_tops_graph.py [--roots DIR ...] [--limit N]
         [--name RE] [--category C] [--charset latin]
         [--bundles DIR] [--traces DIR] [--hip PATH] [--no-cook]
+    hython scripts/build_tops_graph.py --make-hda    # write the HDA
 
 The saved .hip is self-contained and GUI-friendly: all configuration
 (roots, filters, charset, output dirs) lives as spare parameters on
 the /obj/penstroke_tops network — edit them in Houdini and re-cook,
 no code involved.
+
+--make-hda packages the same graph as houdini/otls/penstroke_tops.hda
+(type penstroke::tops). Together with the Houdini package file (see
+scripts/install_houdini_package.py) that makes the whole pipeline
+tab-menu-installable: parm defaults reference $PENSTROKE, and the
+embedded callbacks locate their containing network via self.topNode()
+and the repo via the imported penstroke package — no absolute paths
+are baked into the HDA.
 
 Graph (one work item per font):
 
@@ -60,17 +69,39 @@ DEFAULT_HIP = os.path.join(_REPO, 'output', 'hfont_dev',
                            'penstroke_tops.hip')
 DEFAULT_SELECTIONS = os.path.join(_REPO, 'selections')
 DEFAULT_COREL = os.path.join(_REPO, 'corel')
+DEFAULT_HDA = os.path.join(_REPO, 'houdini', 'otls', 'penstroke_tops.hda')
+HDA_TYPE = 'penstroke::tops'
 
-# Code templates. Tokens (__TOKEN__) are substituted with .replace()
-# — NOT str.format — so braces and backslashes in the code stay inert.
+# Embedded code: no tokens, no absolute paths. Each callback finds its
+# containing network via self.topNode().parent() (works in the plain
+# /obj topnet AND inside any renamed HDA instance — verified
+# empirically that `self` exists in pythonprocessor and pythonscript
+# callbacks) and the repo via the imported penstroke package (the
+# Houdini package file puts <repo>/src on PYTHONPATH).
 
-SCAN_CODE = '''
+REPO_FROM_PACKAGE = '''
+import os
+import penstroke
+
+_repo = os.path.abspath(os.path.join(
+    os.path.dirname(penstroke.__file__), '..', '..'))
+'''
+
+# The config parms live on the plain topnet OR (HDA case) on the OBJ
+# subnet wrapping it — walk up from the cooking node to whichever
+# ancestor carries them.
+CFG_FINDER = '''
+cfg = self.topNode().parent()
+while cfg is not None and cfg.parm('tracesroot') is None:
+    cfg = cfg.parent()
+'''
+
+SCAN_CODE = CFG_FINDER + '''
 import os
 
-import hou
 from penstroke.fontscan import scan
 
-top = hou.node('__TOPNET__')
+top = cfg
 roots = [r.strip() for r in top.evalParm('roots').splitlines()
          if r.strip()]
 records = scan(roots,
@@ -99,30 +130,30 @@ for i, rec in enumerate(records):
     w.setStringAttrib('charset', charset)
 '''
 
-TRACE_CODE = '''
-import os
+TRACE_CODE = REPO_FROM_PACKAGE + '''
+launcher = os.path.join(_repo, 'scripts', 'run_trace.cmd')
 for upstream_item in upstream_items:
     w = item_holder.addWorkItem(parent=upstream_item)
     if not os.path.exists(upstream_item.stringAttribValue('trace_done')):
-        w.setCommand('"__LAUNCHER__" "%s" "%s" %s "%s"' % (
+        w.setCommand('"%s" "%s" "%s" %s "%s"' % (
+            launcher,
             upstream_item.stringAttribValue('ttf'),
             upstream_item.stringAttribValue('trace_dir'),
             upstream_item.stringAttribValue('charset'),
             upstream_item.stringAttribValue('name_norm')))
 '''
 
-SYNC_CODE = '''
-import hou
+SYNC_CODE = CFG_FINDER + REPO_FROM_PACKAGE + '''
 from penstroke.handshake import has_pending
 
-top = hou.node('__TOPNET__')
-inbox = top.evalParm('selectionsroot')
-corel = top.evalParm('corelroot')
+launcher = os.path.join(_repo, 'scripts', 'run_penstroke.cmd')
+inbox = cfg.evalParm('selectionsroot')
+corel = cfg.evalParm('corelroot')
 for upstream_item in upstream_items:
     w = item_holder.addWorkItem(parent=upstream_item)
     trace_dir = upstream_item.stringAttribValue('trace_dir')
     if has_pending(trace_dir, inbox=inbox or None, corel_dir=corel or None):
-        cmd = '"__LAUNCHER__" sync-edits "%s"' % trace_dir
+        cmd = '"%s" sync-edits "%s"' % (launcher, trace_dir)
         if inbox:
             cmd += ' --inbox "%s"' % inbox
         if corel:
@@ -180,15 +211,13 @@ except Exception:
     traceback.print_exc()
 '''
 
-INDEX_CODE = '''
+INDEX_CODE = CFG_FINDER + '''
 import glob
 import html
 import json
 import os
 
-import hou
-
-bundles_root = hou.node('__TOPNET__').evalParm('bundlesroot')
+bundles_root = cfg.evalParm('bundlesroot')
 rows = []
 for man_path in sorted(glob.glob(os.path.join(bundles_root, '*.hfont',
                                               'manifest.json'))):
@@ -218,7 +247,7 @@ print('index:', os.path.join(bundles_root, 'index.html'))
 # Also refresh the PREVIEWS index over the trace folders (separate
 # file, batch_handwriting convention: links each font's interactive
 # preview.html with the glyph-selection tool).
-traces_root = hou.node('__TOPNET__').evalParm('tracesroot')
+traces_root = cfg.evalParm('tracesroot')
 prows = []
 for d in sorted(os.listdir(traces_root)):
     full = os.path.join(traces_root, d)
@@ -252,14 +281,17 @@ def _topnet_parm_templates():
                  'penstroke trace outputs, or plain TTF folders.'),
         hou.StringParmTemplate(
             'tracesroot', 'Traces Root', 1,
+            default_value=('$PENSTROKE/output/handwriting',),
             string_type=hou.stringParmType.FileReference,
             help='Where fresh traces land (existing trace dirs are '
                  'matched by family name).'),
         hou.StringParmTemplate(
             'bundlesroot', 'Hfonts Root', 1,
+            default_value=('$PENSTROKE/output/hfont_dev/hfonts',),
             string_type=hou.stringParmType.FileReference),
         hou.StringParmTemplate(
             'selectionsroot', 'Selections Inbox', 1,
+            default_value=('$PENSTROKE/selections',),
             string_type=hou.stringParmType.FileReference,
             help='Global drop folder for preview.html selection files '
                  '(sel-<font>-<hash>.json); routed to each font via '
@@ -267,6 +299,7 @@ def _topnet_parm_templates():
                  'works too.'),
         hou.StringParmTemplate(
             'corelroot', 'Corel Exchange', 1,
+            default_value=('$PENSTROKE/corel',),
             string_type=hou.stringParmType.FileReference,
             help='Global Corel exchange folder, both directions: '
                  'sync writes sel-<font>-<hash>.csv for the Corel '
@@ -287,38 +320,36 @@ def _topnet_parm_templates():
     ]
 
 
-def build_graph():
+def build_graph(parent_path='/obj', parms_on=None):
+    """Create the topnet under `parent_path` and attach the Penstroke
+    config parms to `parms_on` (default: the topnet itself; the HDA
+    build passes the wrapping OBJ subnet instead)."""
     import hou
-    topnet = hou.node('/obj').createNode('topnet', 'penstroke_tops')
-    assert topnet.path() == TOPNET_PATH, topnet.path()
+    topnet = hou.node(parent_path).createNode('topnet', 'penstroke_tops')
 
-    ptg = topnet.parmTemplateGroup()
+    target = parms_on or topnet
+    ptg = target.parmTemplateGroup()
     folder = hou.FolderParmTemplate('penstroke', 'Penstroke',
                                     _topnet_parm_templates())
-    ptg.insertBefore(ptg.entries()[0], folder)
-    topnet.setParmTemplateGroup(ptg)
+    if ptg.entries():
+        ptg.insertBefore(ptg.entries()[0], folder)
+    else:
+        ptg.append(folder)
+    target.setParmTemplateGroup(ptg)
 
     scan_node = topnet.createNode('pythonprocessor', 'font_scan')
-    scan_node.parm('generate').set(
-        SCAN_CODE.replace('__TOPNET__', TOPNET_PATH))
+    scan_node.parm('generate').set(SCAN_CODE)
 
-    launcher = os.path.join(_REPO, 'scripts',
-                            'run_trace.cmd').replace(os.sep, '/')
     trace = topnet.createNode('pythonprocessor', 'trace_missing')
     trace.setInput(0, scan_node)
-    trace.parm('generate').set(
-        TRACE_CODE.replace('__LAUNCHER__', launcher))
+    trace.parm('generate').set(TRACE_CODE)
 
-    sync_launcher = os.path.join(_REPO, 'scripts',
-                                 'run_penstroke.cmd').replace(os.sep, '/')
     sync = topnet.createNode('pythonprocessor', 'sync_edits')
     sync.setInput(0, trace)
     # Generate from cooked items only: a failed trace must not get a
     # sync command (its store/metadata may be half-written).
     sync.parm('pdg_workitemgeneration').set('0')
-    sync.parm('generate').set(
-        SYNC_CODE.replace('__LAUNCHER__', sync_launcher)
-                 .replace('__TOPNET__', TOPNET_PATH))
+    sync.parm('generate').set(SYNC_CODE)
 
     build = topnet.createNode('pythonscript', 'build_bundle')
     build.setInput(0, sync)
@@ -332,12 +363,38 @@ def build_graph():
     index = topnet.createNode('pythonscript', 'make_index')
     index.setInput(0, wait)
     index.parm('inprocess').set(True)
-    index.parm('script').set(
-        INDEX_CODE.replace('__TOPNET__', TOPNET_PATH))
+    index.parm('script').set(INDEX_CODE)
 
     index.setDisplayFlag(True)
     topnet.layoutChildren()
     return topnet, index
+
+
+def make_hda(hda_path):
+    """Package the graph as penstroke::tops at `hda_path`.
+
+    The asset carries the full parm interface (defaults reference
+    $PENSTROKE from the Houdini package file); the embedded callbacks
+    are location-independent, so the HDA file is portable.
+    """
+    import hou
+    # A topnet can't become an HDA directly — wrap it in an OBJ
+    # subnet; the config parms go on the subnet (= the HDA interface)
+    # and the callbacks find them by walking up (CFG_FINDER).
+    subnet = hou.node('/obj').createNode('subnet', 'penstroke_tops')
+    build_graph(parent_path=subnet.path(), parms_on=subnet)
+    os.makedirs(os.path.dirname(hda_path), exist_ok=True)
+    asset = subnet.createDigitalAsset(
+        name=HDA_TYPE,
+        hda_file_name=hda_path,
+        description='Penstroke TOPs (trace > sync edits > hfonts)',
+        min_num_inputs=0, max_num_inputs=0)
+    definition = asset.type().definition()
+    # Promote the instance's interface (topnet parms + Penstroke
+    # folder) onto the definition so new instances get it.
+    definition.setParmTemplateGroup(asset.parmTemplateGroup())
+    definition.save(hda_path, template_node=asset)
+    return hda_path
 
 
 def main(argv=None):
@@ -357,7 +414,17 @@ def main(argv=None):
     ap.add_argument('--limit', type=int, default=0)
     ap.add_argument('--hip', default=DEFAULT_HIP)
     ap.add_argument('--no-cook', action='store_true')
+    ap.add_argument('--make-hda', action='store_true',
+                    help='Write houdini/otls/penstroke_tops.hda instead '
+                         'of building a hip (use --hda to override the '
+                         'file).')
+    ap.add_argument('--hda', default=DEFAULT_HDA)
     args = ap.parse_args(argv)
+
+    if args.make_hda:
+        path = make_hda(os.path.abspath(args.hda))
+        print(f'saved {path} (type {HDA_TYPE})')
+        return 0
 
     topnet, index = build_graph()
     topnet.parm('roots').set(
