@@ -73,6 +73,75 @@ DEFAULT_COREL = os.path.join(_REPO, 'corel')
 DEFAULT_HDA = os.path.join(_REPO, 'houdini', 'otls', 'penstroke_tops.hda')
 HDA_TYPE = 'penstroke::tops'
 
+# Node help card (Houdini help markup). Shown in the Help pane / the
+# node's "?" button. The full runbook is docs/houdini_workflow.md.
+HDA_HELP = '''= Penstroke TOPs =
+
+"""Trace TTF fonts, sync CorelDRAW edits, and build hfont bundles."""
+
+This network is the penstroke batch pipeline. It discovers fonts,
+traces the ones not done yet, merges any hand-edits made in CorelDRAW,
+and compiles each font into an `.hfont` bundle (em-space glyph
+geometry) for use with the Penstroke Text Layout node.
+
+Set the parameters, then cook the __make_index__ node to run
+everything. Re-cooking is cheap: already-traced fonts are skipped and
+bundles rebuild only when their source changed.
+
+== Workflow ==
+
+# Point __Font Roots__ at a folder of TTFs (or a google/fonts
+  checkout, with __Google Fonts Category__ = `HANDWRITING`) and cook.
+# To hand-correct a glyph: open the font's `preview.html`, click
+  glyphs, __Save selection__, and drop the `sel-*.json` into the
+  __Selections Inbox__ folder. Cook -> a CSV for CorelDRAW appears in
+  __Corel Exchange__.
+# Edit in CorelDRAW (macro `corel/penstroke_corel.bas`), export the
+  CSV back into __Corel Exchange__, and cook again -> the edit is
+  merged and the bundle rebuilt in one cook.
+
+The manual steps never block the cook; they hand work over through the
+two drop folders. See `docs/houdini_workflow.md` in the repo for the
+full guide.
+
+@parameters
+
+Font Roots:
+    Directories to scan, one per line: a google/fonts checkout,
+    penstroke trace outputs, or plain TTF folders.
+
+Traces Root:
+    Where fresh traces are written. Existing trace folders are matched
+    to fonts by family name.
+
+Hfonts Root:
+    Where the compiled `.hfont` bundles are written. `index.html`
+    there is the bundle library.
+
+Selections Inbox:
+    Global drop folder for `sel-<font>-<hash>.json` files saved from
+    preview.html. Routed to each font by the JSON's "font" field.
+
+Corel Exchange:
+    Global CorelDRAW exchange folder, both directions: the CSV for
+    editing is written here, and the edited CSV is picked up from here
+    (same file, or any name containing the font's name).
+
+Family Name Regex:
+    Restrict the run to matching family names. Empty = all.
+
+Google Fonts Category:
+    e.g. `HANDWRITING`. Empty = all. Only applies to google/fonts
+    METADATA.pb records.
+
+Charset:
+    Which characters to trace: `ascii`, `latin` (ASCII + Latin-1), or
+    `all` (the font's whole cmap).
+
+Limit (0 = all):
+    Cap the number of fonts processed. 0 means no cap.
+'''
+
 # Embedded code: no tokens, no absolute paths. Each callback finds its
 # containing network via self.topNode().parent() (works in the plain
 # /obj topnet AND inside any renamed HDA instance — verified
@@ -394,6 +463,7 @@ def make_hda(hda_path):
     # Promote the instance's interface (topnet parms + Penstroke
     # folder) onto the definition so new instances get it.
     definition.setParmTemplateGroup(asset.parmTemplateGroup())
+    definition.addSection('Help', HDA_HELP)   # node "?" help card
     definition.save(hda_path, template_node=asset)
     return hda_path
 
