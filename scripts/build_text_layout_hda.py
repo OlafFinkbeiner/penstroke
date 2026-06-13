@@ -182,6 +182,12 @@ def build_hda():
         ptg.append(pt)
     definition.setParmTemplateGroup(ptg)
     definition.addSection('Help', HDA_HELP)   # node "?" help card
+    # The Hfont Bundle parm points at a .hfont FOLDER — give it a
+    # directory chooser (HOM emits `type file`; patch the .ds).
+    from penstroke.houdini import dirify_dialog_script
+    ds = definition.sections()['DialogScript'].contents()
+    definition.addSection('DialogScript',
+                          dirify_dialog_script(ds, {'hfont'}))
     asset.matchCurrentDefinition()
     print(f'wrote {HDA_PATH}')
     return asset

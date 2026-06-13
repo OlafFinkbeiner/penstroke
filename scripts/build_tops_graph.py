@@ -464,6 +464,13 @@ def make_hda(hda_path):
     # folder) onto the definition so new instances get it.
     definition.setParmTemplateGroup(asset.parmTemplateGroup())
     definition.addSection('Help', HDA_HELP)   # node "?" help card
+    # Single-folder parms get a real directory chooser (roots stays a
+    # multi-line list). HOM can't emit `type directory`, so patch the
+    # DialogScript section that setParmTemplateGroup just wrote.
+    from penstroke.houdini import dirify_dialog_script
+    ds = definition.sections()['DialogScript'].contents()
+    definition.addSection('DialogScript', dirify_dialog_script(
+        ds, {'tracesroot', 'bundlesroot', 'selectionsroot', 'corelroot'}))
     definition.save(hda_path, template_node=asset)
     return hda_path
 
