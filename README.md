@@ -102,6 +102,14 @@ python scripts/batch_google_fonts.py output_root/
 Downloads a hardcoded list of Google Fonts and processes each.
 Produces a top-level `index.html` linking to each font's outputs.
 
+## Houdini pipeline
+
+Beyond the SVG side, penstroke packs each font into an `.hfont` bundle
+(em-space glyph geometry) that Houdini consumes for text layout and
+hand-drawn-stroke animation, with a CorelDRAW round-trip for
+hand-correcting strokes — all driven from a TOPs network, no Python
+needed. See **[docs/houdini_workflow.md](docs/houdini_workflow.md)**.
+
 ## Repo layout
 
 See [CLAUDE.md](CLAUDE.md) for the full module-by-module breakdown.

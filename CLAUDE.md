@@ -82,6 +82,9 @@ src/penstroke/
     ├── ocr.py             Tesseract-based recognition check
     └── report.py          Assemble metrics into report.md and metadata.json
 
+docs/houdini_workflow.md   End-user Houdini runbook (setup, trace,
+                           Corel round-trip, text layout, troubleshooting)
+
 design/                    Active design docs
 ├── hfont_houdini_plan.md  Houdini TOPs + hfont plan (phase status lives here)
 ├── qa_cleanup_spec.json   QA/cleanup architecture (multi-lens synthesis)
