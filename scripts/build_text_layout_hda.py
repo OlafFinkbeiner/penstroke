@@ -200,16 +200,16 @@ def hda_parm_templates():
             string_type=hou.stringParmType.FileReference,
             help='Folder containing .hfont bundles. Pick the folder; the '
                  'Font menu then lists the bundles in it.'),
-        # A string menu (not a plain dropdown): a text field + menu, so
-        # you can TYPE to jump/filter (type "all" -> allison/allura...)
-        # as well as pick. Value is the .hfont token string directly.
-        hou.StringParmTemplate(
-            'font', 'Font', 1, menu_items=(),
-            menu_type=hou.menuType.StringReplace,
-            item_generator_script=FONT_MENU_SCRIPT,
+        # A Normal (integer) menu: hover and scroll the mouse wheel, or
+        # focus and use the up/down arrows, to STEP through the fonts
+        # with a live update each step (no Enter). evalAsString gives
+        # the token; open the dropdown and type to jump by letter.
+        hou.MenuParmTemplate(
+            'font', 'Font', (), item_generator_script=FONT_MENU_SCRIPT,
             item_generator_script_language=hou.scriptLanguage.Python,
-            help='Which bundle in the folder. Type to filter, or pick '
-                 'from the menu.'),
+            help='Which bundle in the folder. Scroll the mouse wheel / '
+                 'arrow keys to step through fonts live; or open the '
+                 'menu and type a letter to jump.'),
         hou.MenuParmTemplate(
             'rep', 'Rep', (), item_generator_script=REP_MENU_SCRIPT,
             item_generator_script_language=hou.scriptLanguage.Python,
