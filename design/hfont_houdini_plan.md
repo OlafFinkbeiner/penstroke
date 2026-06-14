@@ -208,11 +208,20 @@ chosen rep's packed prims.
       monotone for draw-on). A B-spline-style curve Houdini tessellates
       on demand (Resample/Convert) — verified width survives. Built
       for all 355 bundles by build_bundle (own mtime check); NOT the
-      default rep. Why store both: a hand edit round-trips
-      polyline→Corel-bezier→3pt-sample→polyline (the macro re-samples,
-      so exact handles aren't preserved), and the polyline carries the
-      faithful per-point width — so polyline stays raw/canonical and
-      the bezier rep is the clean reduced view.
+      default rep. Polyline stays raw/canonical (per-point width,
+      timing); the bezier rep is the clean reduced view.
+- [x] Handle fidelity: the EXACT hand-edited cubics are preserved, not
+      re-fitted. read_edit_csv keeps B-record control points; a
+      glyph's `bez` field (optional, per stroke) is merged into
+      strokes.json on import (editround.merge_stroke_bez), carried
+      across edit rounds, and the strokes_bezier builder uses those
+      cubics verbatim when present (else fits). Verified end to end via
+      the B-record export path (tests/test_smoke: exact cubics land in
+      the store; rep build reports "N glyphs from exact hand-edited
+      cubics"). The Corel macro now exports nodes as B records
+      (EXPORT_BEZIER, control-point read mirrors the import's
+      AppendCurveSegment2) — NEEDS A COREL TEST (no Corel here); S-record
+      sampling stays as a one-flag fallback.
 - [ ] Wobble/taper as a Houdini SOP layer (NOT a penstroke wedge —
       decided: all font styling happens in Houdini on the strokes rep,
       which carries width/u/arclength for exactly this). An optional

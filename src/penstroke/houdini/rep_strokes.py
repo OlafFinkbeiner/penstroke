@@ -78,6 +78,15 @@ def load_store(path):
             for ch, strokes in data.items()}
 
 
+def load_store_bez(path):
+    """{char: [segments-or-None, ...]} — the exact per-stroke cubics
+    saved by hand edits (editround.merge_stroke_bez), or {} if none."""
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+    return {ch: [s.get('bez') for s in strokes]
+            for ch, strokes in data.items()}
+
+
 def build_glyph_geometry(strokes, to_em, w_scale):
     """One glyph's strokes as a hou.Geometry of open polylines."""
     import hou
@@ -108,8 +117,13 @@ def build_glyph_geometry(strokes, to_em, w_scale):
     return geo
 
 
-def _fit_stroke_cvs(xs, ys, ws):
-    """Fit one stroke (canvas px) to a cubic-Bezier CV stream.
+def _fit_stroke_cvs(xs, ys, ws, segments=None):
+    """One stroke (canvas px) as a cubic-Bezier CV stream.
+
+    With `segments` given (exact hand-edited Corel cubics, each
+    [x0,y0,c1x,c1y,c2x,c2y,x1,y1]), use them verbatim — no fitting, so
+    the user's handles are preserved. Otherwise fit the polyline
+    (Schneider, same as the Corel export).
 
     Returns (cvs_px, widths_px, us) where cvs_px is the order-4 Bezier
     control-point list (3*S+1 points for S segments), or None if the
@@ -123,8 +137,13 @@ def _fit_stroke_cvs(xs, ys, ws):
     pts = np.column_stack([xs, ys]).astype(float)
     if len(pts) < 2:
         return None
-    smoothed = curvefit.smooth_polyline(pts, curvefit.SMOOTH_WINDOW_PX)
-    segs = curvefit.fit_beziers(smoothed, curvefit.STROKE_FIT_TOL_PX)
+    if segments:
+        segs = [(np.array(s[0:2], float), np.array(s[2:4], float),
+                 np.array(s[4:6], float), np.array(s[6:8], float))
+                for s in segments]
+    else:
+        smoothed = curvefit.smooth_polyline(pts, curvefit.SMOOTH_WINDOW_PX)
+        segs = curvefit.fit_beziers(smoothed, curvefit.STROKE_FIT_TOL_PX)
     if not segs:
         return None
 
@@ -157,11 +176,13 @@ def _fit_stroke_cvs(xs, ys, ws):
     return cvs, widths, us
 
 
-def build_glyph_geometry_bezier(strokes, to_em, w_scale):
+def build_glyph_geometry_bezier(strokes, to_em, w_scale, bez=None):
     """One glyph's strokes as open order-4 Bezier curves.
 
-    Returns (geo, qa_polys_em) — qa_polys_em is each curve flattened to
-    an em-space polyline for the contact sheet.
+    `bez` (optional) is a per-stroke list of exact Corel cubics; where
+    present they are used verbatim (handle fidelity), else the stroke
+    is fitted. Returns (geo, qa_polys_em) — qa_polys_em is each curve
+    flattened to an em-space polyline for the contact sheet.
     """
     import hou
     from penstroke import curvefit
@@ -172,7 +193,8 @@ def build_glyph_geometry_bezier(strokes, to_em, w_scale):
     al_attr = geo.addAttrib(hou.attribType.Prim, 'arclength', 0.0)
     qa_polys = []
     for si, (xs, ys, ws) in enumerate(strokes):
-        fit = _fit_stroke_cvs(xs, ys, ws)
+        segments = bez[si] if (bez and si < len(bez)) else None
+        fit = _fit_stroke_cvs(xs, ys, ws, segments=segments)
         if fit is None:
             continue
         cvs_px, widths_px, us = fit
@@ -217,6 +239,7 @@ def build_strokes_bezier_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
             f'{bundle_dir}: no {hfont.FONT_NAME} — create the bundle first')
 
     store = load_store(store_path)
+    store_bez = load_store_bez(store_path)   # exact hand-edited cubics
     to_em, w_scale = canvas_to_em_transform(bundle_font, size, pad)
     cmap = TTFont(bundle_font).getBestCmap()
 
@@ -225,14 +248,17 @@ def build_strokes_bezier_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
 
     built = []
     seen = set()
-    n_cv = n_poly = 0
+    n_cv = n_poly = n_exact = 0
     for ch, strokes in store.items():
         gname = cmap.get(ord(ch))
         if gname is None or gname in seen or not strokes:
             continue
         seen.add(gname)
+        bez = store_bez.get(ch)
+        if bez and any(b for b in bez):
+            n_exact += 1
         glyph_geo, qa_polys = build_glyph_geometry_bezier(
-            strokes, to_em, w_scale)
+            strokes, to_em, w_scale, bez=bez)
         point = container.createPoint()
         packed = container.createPackedGeometry(glyph_geo, point)
         packed.setAttribValue(name_attr, gname)
@@ -253,14 +279,17 @@ def build_strokes_bezier_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
         provenance={'builder': 'rep_strokes (bezier)',
                     'houdini': hou.applicationVersionString(),
                     'store': os.path.basename(store_path),
-                    'fit': 'schneider cubic, curvefit.STROKE_FIT_TOL_PX',
+                    'fit': 'schneider cubic (curvefit) or exact hand-edited '
+                           'cubics from the store',
+                    'exact_glyphs': n_exact,
                     'trace_size': size, 'trace_pad': pad},
         make_default=False)
 
     contact_sheet(built, os.path.join(bundle_dir, 'qa', 'strokes_bezier.png'))
     if verbose and n_poly:
         print(f'  bezier rep: {n_cv} CVs vs {n_poly} polyline points '
-              f'({100.0 * n_cv / n_poly:.0f}%)')
+              f'({100.0 * n_cv / n_poly:.0f}%); {n_exact} glyphs from '
+              f'exact hand-edited cubics')
     return len(built), geo_path
 
 

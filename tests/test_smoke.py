@@ -340,12 +340,20 @@ def test_sync_edits_roundtrip():
         assert not handshake.has_pending(str(out), inbox=str(inbox),
                                          corel_dir=str(corel))
 
+        # Handle fidelity: the CSV carried B records, so the edited
+        # glyph's exact cubics land in the store (for the bezier rep);
+        # the un-edited glyph keeps none.
+        from penstroke.editround import load_stroke_bez
+        bez = load_stroke_bez(str(out))
+        assert bez.get('a') and any(bez['a']), 'exact cubics not stored'
+        assert 'b' not in bez, 'un-edited glyph should carry no cubics'
+
         # Third run: nothing pending, nothing rewritten.
         store_after = (out / 'strokes.json').stat().st_mtime
         cli_main(sync)
         assert (out / 'strokes.json').stat().st_mtime == store_after
         print("✓ sync-edits roundtrip (inbox selection → corel CSV → "
-              "re-saved in place → merge → idempotent)")
+              "re-saved in place → merge → idempotent; exact cubics kept)")
 
 
 if __name__ == '__main__':

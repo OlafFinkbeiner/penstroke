@@ -73,7 +73,12 @@ def save_stroke_store(output_dir, traced_map):
 
 
 def load_stroke_store(output_dir):
-    """Load {char: [(xs, ys, widths), ...]} or None if absent."""
+    """Load {char: [(xs, ys, widths), ...]} or None if absent.
+
+    The optional per-stroke `bez` field (exact Corel cubics) is NOT
+    returned here — the (xs, ys, ws) shape is what the pipeline and
+    renderers consume. Use load_stroke_bez() for the cubics.
+    """
     path = store_path(output_dir)
     if not os.path.exists(path):
         return None
@@ -85,6 +90,51 @@ def load_stroke_store(output_dir):
                     np.asarray(s['y'], dtype=float),
                     np.asarray(s['w'], dtype=float)) for s in strokes]
     return out
+
+
+def load_stroke_bez(output_dir):
+    """Load the exact per-stroke cubics from the store, if any.
+
+    Returns {char: [segments-or-None, ...]} where segments is a list of
+    [x0,y0,c1x,c1y,c2x,c2y,x1,y1] px cubics (canvas frame, y down) for a
+    stroke that came from hand-edited Corel beziers, else None. Empty
+    dict if the store is absent or carries no cubics.
+    """
+    path = store_path(output_dir)
+    if not os.path.exists(path):
+        return {}
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+    out = {}
+    for ch, strokes in data.items():
+        if any('bez' in s for s in strokes):
+            out[ch] = [s.get('bez') for s in strokes]
+    return out
+
+
+def merge_stroke_bez(output_dir, bez_map):
+    """Attach exact cubics to the store's strokes, in place.
+
+    `bez_map` is {char: [segments-or-None per stroke]}. Re-reads the
+    store JSON (which trace_font just wrote, polyline only), adds a
+    `bez` field to each matching stroke (by index; a count mismatch
+    drops that glyph's cubics rather than misalign), and rewrites it.
+    """
+    path = store_path(output_dir)
+    if not bez_map or not os.path.exists(path):
+        return
+    with open(path, encoding='utf-8') as f:
+        data = json.load(f)
+    for ch, segs_per_stroke in bez_map.items():
+        strokes = data.get(ch)
+        if not strokes or len(strokes) != len(segs_per_stroke):
+            continue
+        for s, segs in zip(strokes, segs_per_stroke):
+            if segs:
+                s['bez'] = [[round(float(v), 2) for v in seg]
+                            for seg in segs]
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False)
 
 
 # Charset presets live in penstroke.charset (dependency-light so
@@ -203,13 +253,19 @@ def read_edit_csv(csv_path):
     """Parse an edit CSV (as written by us OR by the Corel export macro).
 
     Returns (header, glyphs) where header is a dict and glyphs is an
-    ordered list of dicts: {char, safe, strokes: [Nx2 array, ...]}
-    with strokes ordered by their stroke index (= Corel object name).
-    Underlay records are ignored — only S records carry edits.
+    ordered list of dicts: {char, safe, strokes: [Nx2 array, ...],
+    bez: [segments-or-None, ...]} with strokes ordered by their stroke
+    index (= Corel object name). `bez` carries the EXACT cubic-Bezier
+    control points when the CSV had B records (our export, or a Corel
+    export macro that writes nodes instead of sampling) — each entry is
+    a list of [x0,y0,c1x,c1y,c2x,c2y,x1,y1] px segments, or None when
+    that stroke arrived as sampled S points only. Underlay records are
+    ignored — only S/B stroke records carry edits.
     """
     header = None
     glyph_by_page = {}
     strokes_by_page = {}
+    bez_by_page = {}            # page -> {si: [segment, ...]} (raw cubics)
     with open(csv_path, encoding='utf-8') as f:
         for raw in f:
             raw = raw.strip()
@@ -238,11 +294,14 @@ def read_edit_csv(csv_path):
                 strokes_by_page.setdefault(page, {}).setdefault(
                     si, []).append((x, y))
             elif tag == 'B' and parts[2] == 'S':
-                # Bezier stroke record (our own export format) — flatten
-                # the cubic so import handles both formats uniformly.
+                # Bezier stroke record. Keep the EXACT cubic (handle
+                # fidelity) AND flatten it to points so the polyline /
+                # width path handles B and S formats uniformly.
                 page = int(parts[1])
                 si = int(parts[3])
                 vals = [_f(v) for v in parts[4:12]]
+                bez_by_page.setdefault(page, {}).setdefault(
+                    si, []).append(vals)
                 p0 = np.array(vals[0:2]); c1 = np.array(vals[2:4])
                 c2 = np.array(vals[4:6]); p3 = np.array(vals[6:8])
                 flat = _flatten_beziers([(p0, c1, c2, p3)], step_px=2.0)
@@ -255,8 +314,10 @@ def read_edit_csv(csv_path):
     for page in sorted(glyph_by_page):
         g = glyph_by_page[page]
         per = strokes_by_page.get(page, {})
-        g['strokes'] = [np.asarray(per[si], dtype=float)
-                        for si in sorted(per)]
+        bez = bez_by_page.get(page, {})
+        order = sorted(per)
+        g['strokes'] = [np.asarray(per[si], dtype=float) for si in order]
+        g['bez'] = [bez.get(si) for si in order]   # exact cubics or None
         glyphs.append(g)
     return header, glyphs
 
@@ -295,6 +356,7 @@ def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
     unknown_char = chr(0)
 
     edited = {}
+    edited_bez = {}        # ch -> [segments-or-None per kept stroke]
     for g in glyphs:
         ch = safe_to_char.get(g['safe'])
         if ch is None and g['char'] != unknown_char:
@@ -304,12 +366,24 @@ def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
         traced = resample_widths(g['strokes'], ttf, ch, size)
         if traced:
             edited[ch] = traced
+            # Pair the exact cubics with the resampled strokes by index
+            # (resample_widths drops <2-pt strokes, so realign on the
+            # kept ones — both come from g in stroke order).
+            if any(b is not None for b in g.get('bez', [])):
+                edited_bez[ch] = [b for b, pts in zip(g['bez'], g['strokes'])
+                                  if len(pts) >= 2]
 
     # Exchange ONLY the glyphs present in the CSV; everything else
     # keeps its current strokes (from the store written at trace /
     # previous import time).
     current = load_stroke_store(output_dir) or {}
     current.update(edited)
+
+    # Carry forward the exact Corel cubics already in the store (other
+    # glyphs) so trace_font's rewrite doesn't drop them; this round's
+    # edits win for their glyphs.
+    prior_bez = load_stroke_bez(output_dir)
+    prior_bez.update(edited_bez)
 
     def glyph_source(ch):
         if ch not in current:
@@ -323,6 +397,9 @@ def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
                size=size,
                glyph_source=glyph_source,
                verbose=verbose)
+    # trace_font rewrote strokes.json (polyline only) — merge the exact
+    # cubics back in per stroke.
+    merge_stroke_bez(output_dir, prior_bez)
     handshake.write_imported_marker(edited_csv, list(edited.keys()))
     return len(edited), len(current) - len(edited)
 

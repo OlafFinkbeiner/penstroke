@@ -136,6 +136,13 @@ The tracer is good but not perfect. To hand-correct a glyph:
    the font ink — you only edit geometry), updates `strokes.json`,
    regenerates the trace folder, and rebuilds the bundle. Done.
 
+Your exact Bézier handles are preserved: the export macro writes the
+control points (not a re-sampled polyline), they are stored per stroke
+in `strokes.json`, and the `strokes_bezier` rep uses them verbatim — so
+the curve in Houdini is the one you drew in Corel. (The macro constant
+`EXPORT_BEZIER` toggles this; the polyline rep is still a dense
+re-sample for faithful width.)
+
 Notes:
 - Only the glyphs in the CSV are exchanged; everything else is kept.
 - Imports are idempotent: a merged CSV gets an `.imported.json` marker
@@ -168,13 +175,13 @@ Points** with **Piece Attribute** = `name`:
 
 - Strokes rep (raw): `reps/strokes/glyphs.bgeo.sc` — dense polyline,
   ~240 points/stroke, faithful width profile.
-- Strokes rep (reduced): `reps/strokes_bezier/glyphs.bgeo.sc` — the
-  same strokes fitted to order-4 Bézier curves (~20× fewer control
-  points; the same Schneider fit the Corel export uses). A B-spline-
-  style curve you **tessellate on demand** with a Resample or Convert
-  SOP — set the density you want at use time instead of carrying 240
-  points everywhere. Carries `width`/`u` on the CVs, so the swept
-  ribbon still works after resampling.
+- Strokes rep (reduced): `reps/strokes_bezier/glyphs.bgeo.sc` — order-4
+  Bézier curves (~20× fewer control points). Hand-edited glyphs use
+  your exact Corel handles; the rest are fitted (Schneider, same as the
+  Corel export). A B-spline-style curve you **tessellate on demand**
+  with a Resample or Convert SOP — set the density you want at use time
+  instead of carrying 240 points everywhere. Carries `width`/`u` on the
+  CVs, so the swept ribbon still works after resampling.
 - Outline rep: `reps/outline/glyphs.bgeo.sc` — filled glyph outlines.
 
 All are packed, one prim per glyph, keyed by `name` (the TTF post

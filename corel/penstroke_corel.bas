@@ -12,8 +12,12 @@ Attribute VB_Name = "PenstrokeRoundtrip"
 '   object NAME - rename to reorder, name new strokes "s05" etc.
 '
 ' PenstrokeExportEdits:
-'   Walks every page, samples every curve named "s*" and writes point
-'   records back. Feed that CSV to `penstroke import-corel`.
+'   Walks every page and writes every curve named "s*" back. With
+'   EXPORT_BEZIER = True (default) it writes the EXACT Bezier control
+'   points (B records) so your hand-edited handles are preserved all
+'   the way into the hfont strokes_bezier rep. With it False it falls
+'   back to sampling points (S records). Feed the CSV to
+'   `penstroke import-corel` (or drop it in the corel/ exchange folder).
 '
 ' Install: Tools > Macros > Macro Editor, File > Import File... this
 ' .bas - then Tools > Macros > Run Macro.
@@ -24,7 +28,11 @@ Attribute VB_Name = "PenstrokeRoundtrip"
 Option Explicit
 
 Private Const UNDERLAY_NAME As String = "underlay"
-Private Const SAMPLE_STEP As Double = 3#   ' pt spacing when exporting curves
+Private Const SAMPLE_STEP As Double = 3#   ' pt spacing in the S fallback
+' Export the exact cubics (B records) instead of sampling. If your
+' CorelDRAW build errors on the control-point properties in
+' WriteShapeCurves, set this False to use the always-works sampling.
+Private Const EXPORT_BEZIER As Boolean = True
 
 
 ' ---------------------------------------------------------------------
@@ -197,13 +205,64 @@ Public Sub PenstrokeExportEdits()
             If LCase$(Left$(sh.Name, 1)) = "s" And IsNumeric(Mid$(sh.Name, 2)) Then
                 Dim sIdx As Long
                 sIdx = CLng(Mid$(sh.Name, 2)) - 1
-                WriteShapeSamples fnum, sh, pageIdx, sIdx, canvasH
+                If EXPORT_BEZIER Then
+                    WriteShapeCurves fnum, sh, pageIdx, sIdx, canvasH
+                Else
+                    WriteShapeSamples fnum, sh, pageIdx, sIdx, canvasH
+                End If
             End If
         Next sh
         pageIdx = pageIdx + 1
     Next pg
     Close #fnum
     MsgBox "Exported " & pageIdx & " pages to " & csvPath, vbInformation, "Penstroke"
+End Sub
+
+
+' Write the EXACT cubic Bezier control points of a stroke as B records
+' (handle fidelity). Mirrors the import side, which builds each segment
+' with SubPath.AppendCurveSegment2 x1,y1,c1x,c1y,c2x,c2y (absolute
+' control points) — so here we read those same four points back per
+' segment. y is flipped (canvasH - y) on every coordinate, like import.
+'
+' VERIFY IN COREL: the control-point property names below
+' (StartingControlPoint* / EndingControlPoint*) are the CorelDRAW
+' VGCore Segment members; if your build names them differently the
+' Macro Editor will flag the line — adjust there, or set
+' EXPORT_BEZIER = False to use WriteShapeSamples instead.
+Private Sub WriteShapeCurves(fnum As Integer, sh As Shape, _
+                             pageIdx As Integer, sIdx As Long, _
+                             canvasH As Double)
+    On Error Resume Next
+    Dim crv As Curve
+    Set crv = sh.Curve
+    If crv Is Nothing Then Exit Sub
+
+    Dim sp As SubPath, seg As Segment
+    For Each sp In crv.SubPaths
+        For Each seg In sp.Segments
+            Dim x0 As Double, y0 As Double, x1 As Double, y1 As Double
+            Dim c1x As Double, c1y As Double, c2x As Double, c2y As Double
+            x0 = seg.StartNode.PositionX: y0 = seg.StartNode.PositionY
+            x1 = seg.EndNode.PositionX:   y1 = seg.EndNode.PositionY
+            If seg.Type = cdrCurveSegment Then
+                c1x = seg.StartingControlPointX
+                c1y = seg.StartingControlPointY
+                c2x = seg.EndingControlPointX
+                c2y = seg.EndingControlPointY
+            Else
+                ' Straight segment: control points at the thirds, so a
+                ' line round-trips as a (degenerate) cubic.
+                c1x = x0 + (x1 - x0) / 3#: c1y = y0 + (y1 - y0) / 3#
+                c2x = x0 + 2# * (x1 - x0) / 3#: c2y = y0 + 2# * (y1 - y0) / 3#
+            End If
+            Print #fnum, "B;" & pageIdx & ";S;" & sIdx & ";" & _
+                Num$(x0) & ";" & Num$(canvasH - y0) & ";" & _
+                Num$(c1x) & ";" & Num$(canvasH - c1y) & ";" & _
+                Num$(c2x) & ";" & Num$(canvasH - c2y) & ";" & _
+                Num$(x1) & ";" & Num$(canvasH - y1)
+        Next seg
+    Next sp
 End Sub
 
 
