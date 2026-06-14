@@ -83,27 +83,37 @@ if n:
 # Node help card (Houdini help markup), shown in the Help pane.
 HDA_HELP = '''= Penstroke Text Layout =
 
-"""Lay text out in an hfont bundle: one point per glyph, ready for
-Copy to Points."""
+"""Lay text out in an hfont bundle and assemble the glyphs — pick the
+bundle folder, the rep, type."""
 
-Shapes the __Text__ with HarfBuzz against the chosen `.hfont` bundle
-and outputs one point per glyph in writing order. Feed that into a
-Copy to Points (Piece Attribute = `name`) with the bundle's glyph
-geometry as the source to assemble the text.
+Shapes the __Text__ with HarfBuzz against the chosen `.hfont` bundle,
+places one point per glyph in writing order, and (with __Assemble
+Glyphs__ on) copies the chosen rep's geometry onto those points — so
+the output IS the laid-out text, no extra File + Copy to Points wiring.
 
-Output point attributes: `P` (glyph origin on the baseline), `name`
-(glyph key for Copy to Points), `pscale` (= font size), and `line`,
-`word`, `cluster` (line number, word index, source char index).
+Pick the bundle folder in __Hfont Bundle__; the __Rep__ menu then
+lists the reps that bundle actually contains (strokes, strokes_bezier,
+outline). strokes_bezier curves can be tessellated downstream with a
+Resample/Convert SOP.
 
-Load glyph geometry from the bundle's `reps/strokes/glyphs.bgeo.sc`
-(hand-drawn strokes) or `reps/outline/glyphs.bgeo.sc` (filled
-outlines). See `docs/houdini_workflow.md` for the full guide.
+With __Assemble Glyphs__ off, the output is just the layout points —
+`P` (glyph origin), `name` (glyph key), `pscale` (= font size), and
+`line`, `word`, `cluster` — for your own Copy to Points (Piece
+Attribute `name`). See `docs/houdini_workflow.md` for the full guide.
 
 @parameters
 
 Hfont Bundle:
     Path to a `.hfont` bundle folder (built by the Penstroke TOPs
-    node).
+    node). Pick the folder; the Rep menu then lists its reps.
+
+Rep:
+    Which representation to place — the reps present in the selected
+    bundle (default rep first). Drives an internal File SOP.
+
+Assemble Glyphs:
+    On: copy the chosen rep onto the layout points (output = the text).
+    Off: output the bare layout points for your own Copy to Points.
 
 Text:
     The text to lay out. Newlines start new lines.
@@ -126,13 +136,49 @@ Line Height (em):
 '''
 
 
+# Dynamic Rep menu: list the reps present in the selected bundle's
+# manifest, so the user picks the .hfont folder and the available reps
+# appear (no typing rep paths).
+REP_MENU_SCRIPT = '''
+import os, json
+node = kwargs['node']
+bundle = node.evalParm('hfont')
+items = []
+try:
+    with open(os.path.join(bundle, 'manifest.json'), encoding='utf-8') as f:
+        man = json.load(f)
+    default = man.get('default_rep')
+    reps = list(man.get('reps', {}))
+    # default rep first, then the rest alphabetically
+    reps.sort(key=lambda r: (r != default, r))
+    for r in reps:
+        items += [r, r]
+except Exception:
+    pass
+if not items:
+    items = ['strokes', 'strokes']
+return items
+'''
+
+
 def hda_parm_templates():
     import hou
     return [
         hou.StringParmTemplate(
             'hfont', 'Hfont Bundle', 1,
             string_type=hou.stringParmType.FileReference,
-            help='Path to a .hfont bundle folder.'),
+            help='Path to a .hfont bundle folder. Pick the folder; the '
+                 'Rep menu then lists the reps it contains.'),
+        hou.MenuParmTemplate(
+            'rep', 'Rep', (), item_generator_script=REP_MENU_SCRIPT,
+            item_generator_script_language=hou.scriptLanguage.Python,
+            help='Which representation to place: the reps present in the '
+                 'selected bundle (strokes, strokes_bezier, outline).'),
+        hou.ToggleParmTemplate(
+            'assemble', 'Assemble Glyphs', default_value=True,
+            help='On: Copy the chosen rep onto the layout points (output '
+                 '= the laid-out text). Off: output just the layout '
+                 'points (P, name, pscale, line/word/cluster).'),
         hou.StringParmTemplate(
             'text', 'Text', 1, default_value=('hello world',),
             tags={'editor': '1', 'editorlines': '5'},
@@ -166,10 +212,34 @@ def build_hda():
     os.makedirs(os.path.dirname(HDA_PATH), exist_ok=True)
     staging = hou.node('/obj').createNode('geo', 'hda_staging')
     subnet = staging.createNode('subnet', 'text_layout')
+
+    # Layout points (one per glyph, with `name`).
     shim = subnet.createNode('python', 'layout_shim')
     shim.parm('python').set(SHIM_CODE)
+
+    # The chosen rep's packed glyph geometry, path derived from the
+    # hfont + rep parms.
+    rep_geo = subnet.createNode('file', 'rep_geo')
+    rep_geo.parm('file').setExpression(
+        'chs("../hfont") + "/reps/" + chs("../rep") + "/glyphs.bgeo.sc"',
+        hou.exprLanguage.Hscript)
+
+    # Copy the glyph onto each layout point by matching `name`.
+    copy = subnet.createNode('copytopoints::2.0', 'assemble')
+    copy.setInput(0, rep_geo)
+    copy.setInput(1, shim)
+    copy.parm('useidattrib').set(True)
+    copy.parm('idattrib').set('name')
+
+    # Assemble toggle: input1 = assembled glyphs, input0 = bare points.
+    switch = subnet.createNode('switch', 'assemble_switch')
+    switch.setInput(0, shim)
+    switch.setInput(1, copy)
+    switch.parm('input').setExpression('ch("../assemble")',
+                                       hou.exprLanguage.Hscript)
+
     out = subnet.createNode('output', 'out')
-    out.setInput(0, shim)
+    out.setInput(0, switch)
     subnet.layoutChildren()
 
     asset = subnet.createDigitalAsset(
@@ -198,33 +268,25 @@ def build_demo(asset_node):
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
     from hfont_demo import render_png
 
+    # The HDA now assembles glyphs internally (Copy to Points), so the
+    # demo is just the HDA + an unpack for rendering.
     demo = hou.node('/obj').createNode('geo', 'hfont_hda_demo')
-    glyphs = demo.createNode('file', 'hfont_glyphs')
-    glyphs.parm('file').set(os.path.join(
-        DEMO_BUNDLE, 'reps', 'outline', 'glyphs.bgeo.sc'))
-
     txt = demo.createNode(HDA_NAME, 'text_layout')
     txt.parm('hfont').set(DEMO_BUNDLE)
+    txt.parm('rep').set('outline')
     txt.parm('text').set(DEMO_TEXT.replace('\\n', '\n'))
     txt.parm('usewidth').set(True)
     txt.parm('width').set(9.0)
     txt.parm('align').set('justify')
 
-    copy = demo.createNode('copytopoints::2.0', 'copy_glyphs')
-    copy.setInput(0, glyphs)
-    copy.setInput(1, txt)
-    copy.parm('useidattrib').set(True)
-    copy.parm('idattrib').set('name')
-
     unpack = demo.createNode('unpack', 'unpack_for_render')
-    unpack.setInput(0, copy)
-    copy.setDisplayFlag(True)
-    copy.setRenderFlag(True)
+    unpack.setInput(0, txt)
+    txt.setDisplayFlag(True)
+    txt.setRenderFlag(True)
     demo.layoutChildren()
 
-    n_pts = len(txt.geometry().points())
-    n_copies = len(copy.geometry().prims())
-    print(f'HDA cooked: {n_pts} layout points, {n_copies} glyph instances')
+    n_copies = len(txt.geometry().prims())
+    print(f'HDA cooked: {n_copies} glyph instances placed')
 
     # Remove the staging container so the saved hip is clean.
     staging = hou.node('/obj/hda_staging')
