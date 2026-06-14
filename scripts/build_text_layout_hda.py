@@ -153,15 +153,22 @@ Line Height (em):
 # ordering; these expressions resolve index -> bundle the same way
 # everywhere (name display, rep menu, geometry path, layout shim).
 
-# Read-only Name field: shows which font the index lands on.
-FONTNAME_EXPR = '''
-import os
-from penstroke import hfont
-hda = hou.pwd()
-b = hfont.bundle_at_index(hda.evalParm('hfont'), hda.evalParm('fontidx'))
-n = hfont.list_bundles(hda.evalParm('hfont'))
-return ('%s   (%d/%d)' % (os.path.basename(b), hda.evalParm('fontidx') + 1,
-        len(n))) if b else '(no .hfont bundles in folder)'
+# Name field: written by a CALLBACK as plain text (NOT an expression —
+# an expression makes the field show its Python code when clicked). The
+# callback fires whenever the Font index or the folder changes.
+FONTNAME_CALLBACK = '''
+try:
+    import os
+    from penstroke import hfont
+    node = kwargs['node']
+    folder = node.evalParm('hfont')
+    b = hfont.bundle_at_index(folder, node.evalParm('fontidx'))
+    bs = hfont.list_bundles(folder)
+    node.parm('fontname').set(
+        '%s   (%d/%d)' % (os.path.basename(b), node.evalParm('fontidx') + 1,
+                          len(bs)) if b else '(no .hfont bundles in folder)')
+except Exception:
+    pass
 '''
 
 # File SOP geometry path: <bundle>/reps/<rep>/glyphs.bgeo.sc.
@@ -206,8 +213,10 @@ def hda_parm_templates():
             'hfont', 'Hfonts Folder', 1,
             default_value=('$PENSTROKE/output/hfont_dev/hfonts',),
             string_type=hou.stringParmType.FileReference,
-            help='Folder containing .hfont bundles. Pick the folder; the '
-                 'Font menu then lists the bundles in it.'),
+            script_callback=FONTNAME_CALLBACK.strip(),
+            script_callback_language=hou.scriptLanguage.Python,
+            help='Folder containing .hfont bundles. Pick the folder, then '
+                 'scrub the Font slider through the bundles in it.'),
         # Font as an INDEX slider: drag / spinner-arrows / keyboard
         # arrows / mouse wheel all step it, and every step is a live
         # update (no Enter) — scrub to preview through the folder's
@@ -215,14 +224,14 @@ def hda_parm_templates():
         hou.IntParmTemplate(
             'fontidx', 'Font', 1, default_value=(0,), min=0, max=500,
             min_is_strict=True,
+            script_callback=FONTNAME_CALLBACK.strip(),
+            script_callback_language=hou.scriptLanguage.Python,
             help='Scrub through the fonts in the folder (drag, arrows, '
                  'or mouse wheel) — live preview each step.'),
         hou.StringParmTemplate(
             'fontname', 'Name', 1, default_value=('',),
-            default_expression=(FONTNAME_EXPR.strip(),),
-            default_expression_language=(hou.scriptLanguage.Python,),
-            disable_when='{ fontidx < -1 }',   # always read-only display
-            help='The font the index lands on (read-only).'),
+            disable_when='{ fontidx >= 0 }',   # always-on -> read-only
+            help='The font the index lands on (read-only display).'),
         hou.MenuParmTemplate(
             'rep', 'Rep', (), item_generator_script=REP_MENU_SCRIPT,
             item_generator_script_language=hou.scriptLanguage.Python,
