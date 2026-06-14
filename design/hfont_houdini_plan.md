@@ -197,8 +197,28 @@ chosen rep's packed prims.
       scripts/run_penstroke.cmd (generic env-scrubbing sibling of
       run_trace.cmd). penstroke_tops.hip rebuilt with the new stage,
       same GUI config.
-- [ ] Wedging: wobble/taper/seed/size variants; seeds resolved
-      upfront; sidecar JSON per variant (reproducibility).
+- [x] Reduced bezier strokes rep (`strokes_bezier`). The dense 240-pt
+      polyline is RAW data (the source of truth — width per point,
+      timing); the bundle now ALSO carries the strokes fitted to
+      order-4 Bézier curves via penstroke/curvefit.py (Schneider's
+      algorithm extracted from editround into a numpy-only,
+      hython-importable module — the SAME fit the Corel export uses).
+      ~20× fewer control points (Allison: 4665 CVs vs 91464 polyline
+      points); width/u carried per CV (handles interpolated, u kept
+      monotone for draw-on). A B-spline-style curve Houdini tessellates
+      on demand (Resample/Convert) — verified width survives. Built
+      for all 355 bundles by build_bundle (own mtime check); NOT the
+      default rep. Why store both: a hand edit round-trips
+      polyline→Corel-bezier→3pt-sample→polyline (the macro re-samples,
+      so exact handles aren't preserved), and the polyline carries the
+      faithful per-point width — so polyline stays raw/canonical and
+      the bezier rep is the clean reduced view.
+- [ ] Wobble/taper as a Houdini SOP layer (NOT a penstroke wedge —
+      decided: all font styling happens in Houdini on the strokes rep,
+      which carries width/u/arclength for exactly this). An optional
+      `penstroke::handwrite` HDA (wobble offset by `u`, taper width
+      ramp, draw-on) would package the handwriting_demo pattern.
+      Seed/size wedging, if wanted, rides Houdini's wedge TOP.
 - [x] Packaged as `penstroke::tops` HDA + Houdini package file.
       `build_tops_graph.py --make-hda` → houdini/otls/
       penstroke_tops.hda (a topnet can't become an HDA directly —

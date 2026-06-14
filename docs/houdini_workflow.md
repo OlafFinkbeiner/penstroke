@@ -96,6 +96,7 @@ Cook the **make_index** node (the display node) to run the whole thing.
 | **Google Fonts Category** | e.g. `HANDWRITING`. Only applies to google/fonts METADATA.pb records. |
 | **Charset** | `ascii` / `latin` / `all`. |
 | **Limit** | Cap the number of fonts (0 = all). |
+| **Build Reduced Bézier Rep** | Also build `strokes_bezier` (order-4 Bézier curves, ~20× fewer points, tessellate on demand). On by default. |
 
 ---
 
@@ -165,11 +166,21 @@ order, with these attributes:
 Load the bundle's rep geometry with a **File** SOP, then **Copy to
 Points** with **Piece Attribute** = `name`:
 
-- Strokes rep: `reps/strokes/glyphs.bgeo.sc`
-- Outline rep: `reps/outline/glyphs.bgeo.sc`
+- Strokes rep (raw): `reps/strokes/glyphs.bgeo.sc` — dense polyline,
+  ~240 points/stroke, faithful width profile.
+- Strokes rep (reduced): `reps/strokes_bezier/glyphs.bgeo.sc` — the
+  same strokes fitted to order-4 Bézier curves (~20× fewer control
+  points; the same Schneider fit the Corel export uses). A B-spline-
+  style curve you **tessellate on demand** with a Resample or Convert
+  SOP — set the density you want at use time instead of carrying 240
+  points everywhere. Carries `width`/`u` on the CVs, so the swept
+  ribbon still works after resampling.
+- Outline rep: `reps/outline/glyphs.bgeo.sc` — filled glyph outlines.
 
-Both are packed, one prim per glyph, keyed by `name` (the TTF post
-glyph name: `A`, `eacute`, …).
+All are packed, one prim per glyph, keyed by `name` (the TTF post
+glyph name: `A`, `eacute`, …). The polyline `strokes` rep is the
+bundle's `default_rep`; `strokes_bezier` is the reduced sibling for
+when you want clean curves.
 
 ### Animate / style it (wobble, taper, draw-on)
 

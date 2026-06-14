@@ -38,6 +38,15 @@ REP_NAME = 'strokes'
 REP_KIND = 'centerline'
 GEO_RELPATH = os.path.join('reps', REP_NAME, 'glyphs.bgeo.sc')
 
+# The reduced-curve sibling rep: the SAME stroke store, fitted to cubic
+# Beziers (Schneider, via penstroke.curvefit — exactly what the Corel
+# export produces), emitted as order-4 Houdini Bezier curves. ~4-19 CVs
+# per stroke instead of 240 polyline points. Not the default rep; the
+# dense polyline stays default for faithful width/draw-on.
+BEZIER_REP_NAME = 'strokes_bezier'
+BEZIER_REP_KIND = 'centerline_bezier'
+BEZIER_GEO_RELPATH = os.path.join('reps', BEZIER_REP_NAME, 'glyphs.bgeo.sc')
+
 # trace_font defaults (pipeline size=384, rasterize_glyph pad=40).
 DEFAULT_TRACE_SIZE = 384
 DEFAULT_TRACE_PAD = 40
@@ -97,6 +106,162 @@ def build_glyph_geometry(strokes, to_em, w_scale):
         poly.setAttribValue(si_attr, si)
         poly.setAttribValue(al_attr, length)
     return geo
+
+
+def _fit_stroke_cvs(xs, ys, ws):
+    """Fit one stroke (canvas px) to a cubic-Bezier CV stream.
+
+    Returns (cvs_px, widths_px, us) where cvs_px is the order-4 Bezier
+    control-point list (3*S+1 points for S segments), or None if the
+    stroke is too short. width/u are carried per CV: on-curve anchors
+    sample the nearest original point; the two handles in each segment
+    interpolate between their anchors, so u stays monotone for draw-on.
+    """
+    import numpy as np
+    from penstroke import curvefit
+
+    pts = np.column_stack([xs, ys]).astype(float)
+    if len(pts) < 2:
+        return None
+    smoothed = curvefit.smooth_polyline(pts, curvefit.SMOOTH_WINDOW_PX)
+    segs = curvefit.fit_beziers(smoothed, curvefit.STROKE_FIT_TOL_PX)
+    if not segs:
+        return None
+
+    # Per-original-point arclength fraction + width, for nearest lookup.
+    seg_len = np.hypot(np.diff(pts[:, 0]), np.diff(pts[:, 1]))
+    cum = np.concatenate([[0.0], np.cumsum(seg_len)])
+    ofrac = cum / cum[-1] if cum[-1] > 0 else cum
+    ow = np.asarray(ws, dtype=float)
+
+    def anchor_uw(p):
+        i = int(np.argmin(np.hypot(pts[:, 0] - p[0], pts[:, 1] - p[1])))
+        return float(ofrac[i]), float(ow[i])
+
+    cvs, us, widths = [], [], []
+    u0, w0 = anchor_uw(segs[0][0])
+    cvs.append(segs[0][0]); us.append(u0); widths.append(w0)
+    for (p0, c1, c2, p3) in segs:
+        u3, w3 = anchor_uw(p3)
+        # handles interpolate between this segment's anchor u/w
+        for frac, cv in ((1 / 3, c1), (2 / 3, c2)):
+            cvs.append(cv)
+            us.append(u0 + (u3 - u0) * frac)
+            widths.append(w0 + (w3 - w0) * frac)
+        cvs.append(p3); us.append(u3); widths.append(w3)
+        u0, w0 = u3, w3
+    # Keep u monotone non-decreasing (nearest-point lookup can wobble).
+    for i in range(1, len(us)):
+        if us[i] < us[i - 1]:
+            us[i] = us[i - 1]
+    return cvs, widths, us
+
+
+def build_glyph_geometry_bezier(strokes, to_em, w_scale):
+    """One glyph's strokes as open order-4 Bezier curves.
+
+    Returns (geo, qa_polys_em) — qa_polys_em is each curve flattened to
+    an em-space polyline for the contact sheet.
+    """
+    import hou
+    from penstroke import curvefit
+    geo = hou.Geometry()
+    w_attr = geo.addAttrib(hou.attribType.Point, 'width', 0.0)
+    u_attr = geo.addAttrib(hou.attribType.Point, 'u', 0.0)
+    si_attr = geo.addAttrib(hou.attribType.Prim, 'stroke_index', 0)
+    al_attr = geo.addAttrib(hou.attribType.Prim, 'arclength', 0.0)
+    qa_polys = []
+    for si, (xs, ys, ws) in enumerate(strokes):
+        fit = _fit_stroke_cvs(xs, ys, ws)
+        if fit is None:
+            continue
+        cvs_px, widths_px, us = fit
+        prim = geo.createBezierCurve(len(cvs_px), is_closed=False, order=4)
+        pts = prim.points()
+        length = 0.0
+        prev = None
+        for k, (cv, wpx, u) in enumerate(zip(cvs_px, widths_px, us)):
+            x, y = to_em(cv[0], cv[1])
+            pts[k].setPosition((x, y, 0.0))
+            pts[k].setAttribValue(w_attr, wpx * w_scale)
+            pts[k].setAttribValue(u_attr, u)
+            if prev is not None:
+                length += math.hypot(x - prev[0], y - prev[1])
+            prev = (x, y)
+        prim.setAttribValue(si_attr, si)
+        prim.setAttribValue(al_attr, length)   # CV-polygon length (em)
+        # Flatten px CVs (3 per segment + 1) back to a smooth polyline
+        # for QA, in em.
+        segs = [(cvs_px[i], cvs_px[i + 1], cvs_px[i + 2], cvs_px[i + 3])
+                for i in range(0, len(cvs_px) - 1, 3)]
+        import numpy as np
+        flat = curvefit.flatten_beziers([tuple(np.asarray(p) for p in s)
+                                         for s in segs])
+        qa_polys.append([to_em(px, py) for px, py in flat])
+    return geo, qa_polys
+
+
+def build_strokes_bezier_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
+                             pad=DEFAULT_TRACE_PAD, verbose=True):
+    """Build the reduced bezier strokes rep into an existing bundle.
+
+    Same stroke store as build_strokes_rep, fitted to cubic Beziers
+    (penstroke.curvefit) and emitted as order-4 Houdini Bezier curves.
+    Registered as a sibling rep (not the default)."""
+    import hou
+    from fontTools.ttLib import TTFont
+
+    bundle_font = os.path.join(bundle_dir, hfont.FONT_NAME)
+    if not os.path.exists(bundle_font):
+        raise hfont.HFontError(
+            f'{bundle_dir}: no {hfont.FONT_NAME} — create the bundle first')
+
+    store = load_store(store_path)
+    to_em, w_scale = canvas_to_em_transform(bundle_font, size, pad)
+    cmap = TTFont(bundle_font).getBestCmap()
+
+    container = hou.Geometry()
+    name_attr = container.addAttrib(hou.attribType.Prim, 'name', '')
+
+    built = []
+    seen = set()
+    n_cv = n_poly = 0
+    for ch, strokes in store.items():
+        gname = cmap.get(ord(ch))
+        if gname is None or gname in seen or not strokes:
+            continue
+        seen.add(gname)
+        glyph_geo, qa_polys = build_glyph_geometry_bezier(
+            strokes, to_em, w_scale)
+        point = container.createPoint()
+        packed = container.createPackedGeometry(glyph_geo, point)
+        packed.setAttribValue(name_attr, gname)
+        built.append((gname, qa_polys))
+        n_cv += len(glyph_geo.points())
+        n_poly += sum(len(s[0]) for s in strokes)
+        if verbose:
+            print(f'  {gname}: {len(strokes)} strokes')
+
+    geo_path = os.path.join(bundle_dir, BEZIER_GEO_RELPATH)
+    os.makedirs(os.path.dirname(geo_path), exist_ok=True)
+    container.saveToFile(geo_path)
+
+    hfont.register_rep(
+        bundle_dir, BEZIER_REP_NAME, BEZIER_REP_KIND, BEZIER_GEO_RELPATH,
+        attributes={'point': ['width', 'u'],
+                    'prim': ['stroke_index', 'arclength']},
+        provenance={'builder': 'rep_strokes (bezier)',
+                    'houdini': hou.applicationVersionString(),
+                    'store': os.path.basename(store_path),
+                    'fit': 'schneider cubic, curvefit.STROKE_FIT_TOL_PX',
+                    'trace_size': size, 'trace_pad': pad},
+        make_default=False)
+
+    contact_sheet(built, os.path.join(bundle_dir, 'qa', 'strokes_bezier.png'))
+    if verbose and n_poly:
+        print(f'  bezier rep: {n_cv} CVs vs {n_poly} polyline points '
+              f'({100.0 * n_cv / n_poly:.0f}%)')
+    return len(built), geo_path
 
 
 def build_strokes_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
@@ -189,12 +354,18 @@ def main(argv=None):
                     help='Trace rasterization size in px (default 384).')
     ap.add_argument('--pad', type=int, default=DEFAULT_TRACE_PAD,
                     help='Trace canvas pad in px (default 40).')
+    ap.add_argument('--no-bezier', action='store_true',
+                    help='Skip the reduced strokes_bezier sibling rep.')
     ap.add_argument('--quiet', action='store_true')
     args = ap.parse_args(argv)
 
     n, geo_path = build_strokes_rep(args.store, args.bundle,
                                     size=args.size, pad=args.pad,
                                     verbose=not args.quiet)
+    if not args.no_bezier:
+        build_strokes_bezier_rep(args.store, args.bundle,
+                                 size=args.size, pad=args.pad,
+                                 verbose=not args.quiet)
     problems = hfont.validate(args.bundle)
     print(f'{n} glyphs -> {geo_path}')
     if problems:

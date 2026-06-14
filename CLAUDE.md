@@ -50,6 +50,9 @@ src/penstroke/
 │                          text_layout SOP, benchmarkable standalone
 ├── charset.py             Charset presets, importable under hython
 │                          (no scipy/skimage)
+├── curvefit.py            Schneider cubic-Bézier fitting (numpy-only, so
+│                          hython can import it) — shared by the Corel
+│                          export and the bezier strokes rep
 ├── editround.py           Corel CSV edit-round workflow (export/merge)
 ├── handshake.py           File-handshake conventions for the edit round:
 │                          TWO global drop folders at repo root —
@@ -62,7 +65,10 @@ src/penstroke/
 │
 ├── houdini/               Builders that run under hython (need `hou`)
 │   ├── rep_outline.py     TTF beziers → em-space curves2d rep
-│   └── rep_strokes.py     strokes.json → em-space centerline rep
+│   └── rep_strokes.py     strokes.json → em-space centerline rep (dense
+│                          polyline = raw) + strokes_bezier rep (reduced
+│                          order-4 Bézier curves via curvefit, tessellate
+│                          on demand in Houdini)
 │
 ├── render/                Output formats
 │   ├── svg.py             Path-building primitives (ribbon polygon, centerline)

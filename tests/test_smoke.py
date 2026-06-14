@@ -37,6 +37,7 @@ def test_imports():
     import penstroke.render.diagnostic
     import penstroke.render.word
     import penstroke.render.houdini
+    import penstroke.curvefit
     import penstroke.quality.metrics
     import penstroke.quality.cascade
     import penstroke.quality.report
@@ -137,6 +138,37 @@ def test_houdini_export():
         for pt in stroke['points']:
             assert 'x' in pt and 'y' in pt and 'width' in pt
     print("✓ Houdini JSON export schema correct")
+
+
+def test_curvefit_reduces_polyline():
+    """curvefit.fit_beziers turns a dense polyline into a few cubic
+    segments that still track the original within tolerance — the
+    numpy-only core shared by the Corel export and the bezier rep."""
+    import numpy as np
+    from penstroke import curvefit
+
+    # 240-sample arc (like a real stroke): a smooth quarter-circle.
+    t = np.linspace(0, np.pi / 2, 240)
+    pts = np.column_stack([np.cos(t) * 100, np.sin(t) * 100])
+    segs = curvefit.fit_beziers(pts, curvefit.STROKE_FIT_TOL_PX)
+    # Dramatic reduction: a smooth arc is a handful of cubics, not 240.
+    assert 1 <= len(segs) <= 8, f'expected few segments, got {len(segs)}'
+    n_cv = 3 * len(segs) + 1
+    assert n_cv < len(pts) / 5, f'{n_cv} CVs is not a real reduction'
+
+    # Flattened curve stays close to the original samples.
+    flat = curvefit.flatten_beziers([tuple(np.asarray(p) for p in s)
+                                     for s in segs])
+    # nearest-distance from each original point to the flattened curve
+    d = np.min(np.hypot(pts[:, None, 0] - flat[None, :, 0],
+                        pts[:, None, 1] - flat[None, :, 1]), axis=1)
+    assert float(d.max()) < 3.0, f'fit drifted {d.max():.2f}px off'
+
+    # The Corel export still re-exports through the moved code path.
+    from penstroke.editround import fit_beziers as ee_fit
+    assert ee_fit is curvefit.fit_beziers
+    print(f"✓ curvefit: 240-pt arc -> {len(segs)} cubic segments, "
+          f"max drift {d.max():.2f}px")
 
 
 def test_handshake_pending_logic():
@@ -318,6 +350,7 @@ def test_sync_edits_roundtrip():
 
 if __name__ == '__main__':
     test_imports()
+    test_curvefit_reduces_polyline()
     test_trace_glyph_basic()
     test_full_pipeline_writes_expected_files()
     test_glyph_svgs_have_metadata_attributes()

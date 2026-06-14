@@ -140,6 +140,12 @@ Charset:
 
 Limit (0 = all):
     Cap the number of fonts processed. 0 means no cap.
+
+Build Reduced Bézier Rep:
+    Also build the `strokes_bezier` rep — the strokes fitted to order-4
+    Bézier curves (~20x fewer control points; the same Schneider fit the
+    Corel export uses), which Houdini tessellates on demand. Off builds
+    the dense polyline strokes rep only.
 '''
 
 # Embedded code: no tokens, no absolute paths. Each callback finds its
@@ -181,6 +187,7 @@ records = scan(roots,
 charset = top.parm('charset').evalAsString()
 traces_root = top.evalParm('tracesroot')
 bundles_root = top.evalParm('bundlesroot')
+build_bezier = int(top.evalParm('build_bezier'))
 
 for i, rec in enumerate(records):
     norm = rec['family'].lower().replace(' ', '')
@@ -198,6 +205,7 @@ for i, rec in enumerate(records):
     w.setStringAttrib('bundle',
                       os.path.join(bundles_root, norm + '.hfont'))
     w.setStringAttrib('charset', charset)
+    w.setIntAttrib('build_bezier', build_bezier)
 '''
 
 TRACE_CODE = REPO_FROM_PACKAGE + '''
@@ -250,6 +258,9 @@ def current(geo_path, src_path):
 
 need_outline = True
 need_strokes = os.path.exists(store)
+# reduced-curve sibling of strokes, gated by the HDA toggle
+need_bezier = os.path.exists(store) and bool(work_item.attribValue(
+    'build_bezier'))
 if not need_strokes:
     print('WARNING: no stroke store for',
           work_item.attribValue('family'),
@@ -263,6 +274,9 @@ if os.path.exists(os.path.join(bundle, hfont.MANIFEST_NAME)):
         if need_strokes and 'strokes' in hf.manifest['reps'] and \\
                 current(hf.rep_geo_path('strokes'), store):
             need_strokes = False
+        if need_bezier and 'strokes_bezier' in hf.manifest['reps'] and \\
+                current(hf.rep_geo_path('strokes_bezier'), store):
+            need_bezier = False
     except Exception:
         pass
 
@@ -274,6 +288,8 @@ try:
                                       verbose=False)
     if need_strokes:
         rep_strokes.build_strokes_rep(store, bundle, verbose=False)
+    if need_bezier:
+        rep_strokes.build_strokes_bezier_rep(store, bundle, verbose=False)
     print('bundle ok:', bundle)
 except Exception:
     import traceback
@@ -297,7 +313,7 @@ for man_path in sorted(glob.glob(os.path.join(bundles_root, '*.hfont',
         man = json.load(f)
     reps = ', '.join(sorted(man.get('reps', {})))
     qa = []
-    for rep in ('strokes', 'outline'):
+    for rep in ('strokes', 'strokes_bezier', 'outline'):
         png = os.path.join(bundle, 'qa', rep + '.png')
         if os.path.exists(png):
             qa.append('<a href="%s/qa/%s.png">%s</a>' % (rel, rep, rep))
@@ -387,6 +403,11 @@ def _topnet_parm_templates():
                              default_value=1),
         hou.IntParmTemplate('limit', 'Limit (0 = all)', 1,
                             default_value=(0,), min=0, max=500),
+        hou.ToggleParmTemplate(
+            'build_bezier', 'Build Reduced Bézier Rep', default_value=True,
+            help='Also build the strokes_bezier rep: the strokes fitted '
+                 'to order-4 Bézier curves (~20x fewer points, tessellate '
+                 'on demand in Houdini). Off = polyline strokes rep only.'),
     ]
 
 
