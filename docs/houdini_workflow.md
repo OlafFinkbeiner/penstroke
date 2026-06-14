@@ -163,6 +163,15 @@ directly (it does the Copy to Points internally). Other parms: **Font
 Size**, **Wrap** + **Wrap Width**, **Align** (Left/Center/Right/
 Justify), **Tracking (em)**, **Line Height (em)**.
 
+**Font browser panel (search + preview).** For finding a font among
+hundreds, the inline slider is for browsing; to *search*, open the
+**Penstroke Fonts** Python Panel: make a pane, set its type to **Python
+Panel**, and choose **Penstroke Fonts** from the panel's interface
+menu. Select your `text_layout` node, hit **Reload**; the panel lists
+the folder's fonts with a filter box and a glyph preview (the QA sheet).
+Click or arrow-key through the list — it drives the node's `fontidx`
+live, so the panel and the slider stay in sync.
+
 With **Assemble Glyphs** off it outputs one point per glyph in writing
 order instead, with these attributes (for your own Copy to Points):
 
