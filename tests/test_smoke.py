@@ -316,6 +316,14 @@ def test_sync_edits_roundtrip():
             {'penstroke_selection': 1, 'font': 'Caveat', 'glyphs': 'a'}),
             encoding='utf-8')
 
+        # A direct export-corel into the exchange folder writes its
+        # outgoing sidecar, so it is NOT mistaken for a Corel return.
+        cli_main(['export-corel', str(out),
+                  '--csv', str(corel / 'caveat-manual.csv')])
+        assert (corel / 'caveat-manual.csv.outgoing.json').exists()
+        assert not handshake.pending_edits(str(out), corel_dir=str(corel)), \
+            'a fresh export must not look like a return'
+
         sync = ['sync-edits', str(out),
                 '--inbox', str(inbox), '--corel', str(corel)]
         cli_main(sync)

@@ -171,6 +171,11 @@ def main(argv=None):
         n = write_edit_csv(args.output_dir, csv_path, meta['font_name'],
                            ttf, letters, args.size, safe_filename,
                            stroke_source=store)
+        # Mark it as OUR pristine export so a later sync-edits doesn't
+        # mistake the un-edited file for a Corel return (it becomes a
+        # return only once Corel re-saves it and bumps the mtime).
+        handshake.write_outgoing_marker(csv_path, meta['font_name'],
+                                        args.output_dir)
         print(f'wrote {csv_path} ({n} glyph pages)')
         print('Next: in CorelDRAW run the PenstrokeImport macro '
               '(corel/penstroke_corel.bas) and select this CSV.')
