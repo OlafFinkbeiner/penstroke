@@ -40,11 +40,18 @@ except ImportError:
         'penstroke not importable in Houdini python. Run: '
         'hython -m pip install --user --no-deps -e <penstroke repo>')
 
+import os
 node = hou.pwd()
 hda = node.parent()
 geo = node.geometry()
 
-bundle = hda.evalParm('hfont')
+# Bundle = the chosen font inside the selected folder (font is a
+# <name>.hfont subfolder, or '.' when the folder is itself a bundle).
+# 'font' is a menu -> evalAsString for the token, not the int index.
+_folder = hda.evalParm('hfont')
+_font = hda.parm('font').evalAsString()
+bundle = os.path.normpath(os.path.join(_folder, _font)) if _font \\
+    else _folder
 text = hda.evalParm('text')
 size = hda.evalParm('fontsize')
 use_width = hda.evalParm('usewidth')
@@ -83,18 +90,18 @@ if n:
 # Node help card (Houdini help markup), shown in the Help pane.
 HDA_HELP = '''= Penstroke Text Layout =
 
-"""Lay text out in an hfont bundle and assemble the glyphs — pick the
-bundle folder, the rep, type."""
+"""Lay text out in an hfont bundle and assemble the glyphs — pick a
+folder, pick the font, pick the rep, type."""
 
-Shapes the __Text__ with HarfBuzz against the chosen `.hfont` bundle,
-places one point per glyph in writing order, and (with __Assemble
-Glyphs__ on) copies the chosen rep's geometry onto those points — so
-the output IS the laid-out text, no extra File + Copy to Points wiring.
+Shapes the __Text__ with HarfBuzz against the chosen font, places one
+point per glyph in writing order, and (with __Assemble Glyphs__ on)
+copies the chosen rep's geometry onto those points — so the output IS
+the laid-out text, no extra File + Copy to Points wiring.
 
-Pick the bundle folder in __Hfont Bundle__; the __Rep__ menu then
-lists the reps that bundle actually contains (strokes, strokes_bezier,
-outline). strokes_bezier curves can be tessellated downstream with a
-Resample/Convert SOP.
+Pick the __Hfonts Folder__; the __Font__ menu lists the `.hfont`
+bundles in it, and the __Rep__ menu lists the reps that font contains
+(strokes, strokes_bezier, outline). strokes_bezier curves can be
+tessellated downstream with a Resample/Convert SOP.
 
 With __Assemble Glyphs__ off, the output is just the layout points —
 `P` (glyph origin), `name` (glyph key), `pscale` (= font size), and
@@ -103,13 +110,16 @@ Attribute `name`). See `docs/houdini_workflow.md` for the full guide.
 
 @parameters
 
-Hfont Bundle:
-    Path to a `.hfont` bundle folder (built by the Penstroke TOPs
-    node). Pick the folder; the Rep menu then lists its reps.
+Hfonts Folder:
+    A folder containing `.hfont` bundles (e.g. the Penstroke TOPs
+    output). Pick it; the Font menu then lists the bundles in it.
+
+Font:
+    Which `.hfont` bundle in the folder to use.
 
 Rep:
     Which representation to place — the reps present in the selected
-    bundle (default rep first). Drives an internal File SOP.
+    font (default rep first). Drives an internal File SOP.
 
 Assemble Glyphs:
     On: copy the chosen rep onto the layout points (output = the text).
@@ -136,13 +146,33 @@ Line Height (em):
 '''
 
 
-# Dynamic Rep menu: list the reps present in the selected bundle's
-# manifest, so the user picks the .hfont folder and the available reps
-# appear (no typing rep paths).
+# Dynamic Font menu: list the .hfont bundles inside the selected
+# folder, so you pick a folder and a dropdown shows its fonts. Token =
+# the <name>.hfont subfolder; label = the clean family name. If the
+# folder is ITSELF a bundle, it offers just that one ('.').
+FONT_MENU_SCRIPT = '''
+import os, glob
+node = kwargs['node']
+folder = node.evalParm('hfont')
+items = []
+for p in sorted(glob.glob(os.path.join(folder, '*.hfont'))):
+    name = os.path.basename(p)
+    items += [name, name[:-6] if name.endswith('.hfont') else name]
+if not items and os.path.exists(os.path.join(folder, 'manifest.json')):
+    items = ['.', os.path.basename(os.path.normpath(folder))]
+if not items:
+    items = ['', '(no .hfont bundles in folder)']
+return items
+'''
+
+# Dynamic Rep menu: the reps in the SELECTED font's manifest.
 REP_MENU_SCRIPT = '''
 import os, json
 node = kwargs['node']
-bundle = node.evalParm('hfont')
+# 'font' is a menu: evalAsString gives the token (the .hfont dirname),
+# evalParm would give the integer index.
+bundle = os.path.normpath(os.path.join(
+    node.evalParm('hfont'), node.parm('font').evalAsString() or '.'))
 items = []
 try:
     with open(os.path.join(bundle, 'manifest.json'), encoding='utf-8') as f:
@@ -165,15 +195,20 @@ def hda_parm_templates():
     import hou
     return [
         hou.StringParmTemplate(
-            'hfont', 'Hfont Bundle', 1,
+            'hfont', 'Hfonts Folder', 1,
+            default_value=('$PENSTROKE/output/hfont_dev/hfonts',),
             string_type=hou.stringParmType.FileReference,
-            help='Path to a .hfont bundle folder. Pick the folder; the '
-                 'Rep menu then lists the reps it contains.'),
+            help='Folder containing .hfont bundles. Pick the folder; the '
+                 'Font menu then lists the bundles in it.'),
+        hou.MenuParmTemplate(
+            'font', 'Font', (), item_generator_script=FONT_MENU_SCRIPT,
+            item_generator_script_language=hou.scriptLanguage.Python,
+            help='Which bundle in the folder to use.'),
         hou.MenuParmTemplate(
             'rep', 'Rep', (), item_generator_script=REP_MENU_SCRIPT,
             item_generator_script_language=hou.scriptLanguage.Python,
             help='Which representation to place: the reps present in the '
-                 'selected bundle (strokes, strokes_bezier, outline).'),
+                 'selected font (strokes, strokes_bezier, outline).'),
         hou.ToggleParmTemplate(
             'assemble', 'Assemble Glyphs', default_value=True,
             help='On: Copy the chosen rep onto the layout points (output '
@@ -221,7 +256,8 @@ def build_hda():
     # hfont + rep parms.
     rep_geo = subnet.createNode('file', 'rep_geo')
     rep_geo.parm('file').setExpression(
-        'chs("../hfont") + "/reps/" + chs("../rep") + "/glyphs.bgeo.sc"',
+        'chs("../hfont") + "/" + chs("../font") + "/reps/" + '
+        'chs("../rep") + "/glyphs.bgeo.sc"',
         hou.exprLanguage.Hscript)
 
     # Copy the glyph onto each layout point by matching `name`.
@@ -272,7 +308,8 @@ def build_demo(asset_node):
     # demo is just the HDA + an unpack for rendering.
     demo = hou.node('/obj').createNode('geo', 'hfont_hda_demo')
     txt = demo.createNode(HDA_NAME, 'text_layout')
-    txt.parm('hfont').set(DEMO_BUNDLE)
+    txt.parm('hfont').set(os.path.dirname(DEMO_BUNDLE))
+    txt.parm('font').set(os.path.basename(DEMO_BUNDLE))
     txt.parm('rep').set('outline')
     txt.parm('text').set(DEMO_TEXT.replace('\\n', '\n'))
     txt.parm('usewidth').set(True)

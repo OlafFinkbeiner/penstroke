@@ -155,11 +155,16 @@ Notes:
 
 ### Lay out text
 
-Drop **`penstroke::text_layout`**, point **Hfont Bundle** at a
-`.hfont` folder, type into **Text**. Parms: **Font Size**, **Wrap** +
-**Wrap Width**, **Align** (Left/Center/Right/Justify), **Tracking
-(em)**, **Line Height (em)**. It outputs one point per glyph in writing
-order, with these attributes:
+Drop **`penstroke::text_layout`**, point **Hfonts Folder** at a folder
+of `.hfont` bundles (e.g. the TOPs output), pick the bundle from the
+**Font** dropdown, pick the **Rep**, and type into **Text**. With
+**Assemble Glyphs** on (default) the node outputs the laid-out text
+directly (it does the Copy to Points internally). Other parms: **Font
+Size**, **Wrap** + **Wrap Width**, **Align** (Left/Center/Right/
+Justify), **Tracking (em)**, **Line Height (em)**.
+
+With **Assemble Glyphs** off it outputs one point per glyph in writing
+order instead, with these attributes (for your own Copy to Points):
 
 | Attribute | Meaning |
 |---|---|
