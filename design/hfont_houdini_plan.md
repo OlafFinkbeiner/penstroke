@@ -218,10 +218,15 @@ chosen rep's packed prims.
       cubics verbatim when present (else fits). Verified end to end via
       the B-record export path (tests/test_smoke: exact cubics land in
       the store; rep build reports "N glyphs from exact hand-edited
-      cubics"). The Corel macro now exports nodes as B records
+      cubics"). The Corel macro exports nodes as B records
       (EXPORT_BEZIER, control-point read mirrors the import's
-      AppendCurveSegment2) — NEEDS A COREL TEST (no Corel here); S-record
-      sampling stays as a one-flag fallback.
+      AppendCurveSegment2); S-record sampling stays as a one-flag
+      fallback. VALIDATED with a real Corel pass (2026-06-14): Allison
+      Q/Z edited and exported (26 B records, no S), merged, the rep
+      reports exact_glyphs=2 and Q/Z register correctly on the ink. (Of
+      note: the macro flips y by the Corel page height; the test doc
+      reported 568 vs the 564 trace canvas with no visible
+      misregistration — watch this if a font ever comes back shifted.)
 - [ ] Wobble/taper as a Houdini SOP layer (NOT a penstroke wedge —
       decided: all font styling happens in Houdini on the strokes rep,
       which carries width/u/arclength for exactly this). An optional
