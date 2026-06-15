@@ -97,9 +97,9 @@ the laid-out text, no extra File + Copy to Points wiring.
 Pick the __Hfonts Folder__; optionally narrow by __Type__ (Sans Serif,
 Serif, Handwriting, …); the __Font__ menu lists the matching `.hfont`
 bundles (open it and type a letter to jump); and the __Rep__ menu lists
-the reps that font contains (strokes, strokes_bezier, outline).
-strokes_bezier curves can be tessellated downstream with a
-Resample/Convert SOP.
+the reps that font contains (strokes, strokes_bezier, outline). Turn
+on __Build Ribbon__ to output the strokes as filled variable-width
+ribbon surfaces (the calligraphic stroke) instead of bare curves.
 
 With __Assemble Glyphs__ off, the output is just the layout points —
 `P` (glyph origin), `name` (glyph key), `pscale` (= font size), and
@@ -127,6 +127,11 @@ Rep:
 Assemble Glyphs:
     On: copy the chosen rep onto the layout points (output = the text).
     Off: output the bare layout points for your own Copy to Points.
+
+Build Ribbon:
+    Turn the centerline curves into variable-width ribbon surfaces (the
+    calligraphic stroke, filled) using the per-point `width`. Use a
+    strokes / strokes_bezier rep. Off = place the raw curves.
 
 Text:
     The text to lay out. Newlines start new lines.
@@ -249,6 +254,12 @@ def hda_parm_templates():
             help='On: Copy the chosen rep onto the layout points (output '
                  '= the laid-out text). Off: output just the layout '
                  'points (P, name, pscale, line/word/cluster).'),
+        hou.ToggleParmTemplate(
+            'ribbon', 'Build Ribbon', default_value=False,
+            disable_when='{ assemble == 0 }',
+            help='Turn the centerline curves into variable-width ribbon '
+                 'surfaces (the calligraphic stroke filled). Use a '
+                 'strokes / strokes_bezier rep (they carry width).'),
         hou.StringParmTemplate(
             'text', 'Text', 1, default_value=('hello world',),
             tags={'editor': '1', 'editorlines': '5'},
@@ -295,9 +306,37 @@ def build_hda():
         'chs("../rep") + "/glyphs.bgeo.sc"',
         hou.exprLanguage.Hscript)
 
-    # Copy the glyph onto each layout point by matching `name`.
+    # Ribbon branch: turn the centerline curves into variable-width
+    # ribbons. Unpack (carry `name` inward) -> rename width to pscale ->
+    # Sweep a flat ribbon in the glyph plane (up = +Z). The Sweep
+    # tessellates the bezier directly, so no resample is needed. `width`
+    # is the full stroke width, so the sweep scale is 0.5 (pscale is the
+    # half-width radius). Built in em space, so Copy to Points scales the
+    # ribbon width with the glyph.
+    rib_unpack = subnet.createNode('unpack', 'rib_unpack')
+    rib_unpack.setInput(0, rep_geo)
+    rib_unpack.parm('transfer_attributes').set('name')
+    rib_width = subnet.createNode('attribwrangle', 'rib_width')
+    rib_width.setInput(0, rib_unpack)
+    # Rename the per-point `width` to `pscale` (what the Sweep reads).
+    rib_width.parm('snippet').set('f@pscale = f@width;')
+    rib_sweep = subnet.createNode('sweep::2.0', 'rib_sweep')
+    rib_sweep.setInput(0, rib_width)
+    rib_sweep.parm('surfaceshape').set('ribbon')
+    rib_sweep.parm('surfacetype').set('quads')
+    rib_sweep.parm('upvectortype').set('z')
+    rib_sweep.parm('scale').set(0.5)
+
+    # Ribbon toggle: source = ribbons (1) or the raw curves (0).
+    rib_switch = subnet.createNode('switch', 'rib_switch')
+    rib_switch.setInput(0, rep_geo)
+    rib_switch.setInput(1, rib_sweep)
+    rib_switch.parm('input').setExpression('ch("../ribbon")',
+                                           hou.exprLanguage.Hscript)
+
+    # Copy the glyph (curve or ribbon) onto each layout point by `name`.
     copy = subnet.createNode('copytopoints::2.0', 'assemble')
-    copy.setInput(0, rep_geo)
+    copy.setInput(0, rib_switch)
     copy.setInput(1, shim)
     copy.parm('useidattrib').set(True)
     copy.parm('idattrib').set('name')

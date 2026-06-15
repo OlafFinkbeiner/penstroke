@@ -160,7 +160,10 @@ of `.hfont` bundles (e.g. the TOPs output), optionally narrow by
 **Type** (Sans Serif / Serif / Display / Handwriting / Monospace — uses
 the cook's `index.json`), pick the bundle from the **Font** dropdown
 (open it and type a letter to jump), pick the **Rep**, and type into
-**Text**. With **Assemble Glyphs** on (default)
+**Text**. Turn on **Build Ribbon** to output the strokes as filled
+variable-width ribbon surfaces (the calligraphic stroke, built from the
+centerline + per-point width) instead of bare curves — use a strokes /
+strokes_bezier rep. With **Assemble Glyphs** on (default)
 the node outputs the laid-out text directly (it does the Copy to Points
 internally). Other parms: **Font Size**, **Wrap** + **Wrap Width**,
 **Align** (Left/Center/Right/Justify), **Tracking (em)**, **Line Height
