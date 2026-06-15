@@ -63,9 +63,8 @@ def list_bundles(folder):
     """Sorted list of .hfont bundle paths in `folder`.
 
     If `folder` is itself a bundle (has a manifest), returns just it.
-    The ONE place the folder->font-list ordering is defined, so every
-    consumer (the text_layout font picker's index, name display, rep
-    menu, geometry path) agrees on which index is which font.
+    The ONE place the folder->font-list ordering is defined, so the
+    text_layout Font menu lists bundles consistently.
     """
     import glob
     subs = sorted(glob.glob(os.path.join(folder, '*.hfont')))
@@ -74,15 +73,6 @@ def list_bundles(folder):
     if os.path.exists(os.path.join(folder, MANIFEST_NAME)):
         return [folder]
     return []
-
-
-def bundle_at_index(folder, index):
-    """The bundle path at `index` in list_bundles(folder), clamped, or
-    '' if the folder has none."""
-    bundles = list_bundles(folder)
-    if not bundles:
-        return ''
-    return bundles[max(0, min(int(index), len(bundles) - 1))]
 
 
 def load_manifest(bundle_dir):
