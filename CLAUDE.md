@@ -247,6 +247,11 @@ fix the mechanism. Where to look:
    automatically, but producing `spec.json` requires running the
    vision-agent fan-out by hand (in-session workflow). Could become a
    CLI step.
+6. **Pen-width analysis for the strokes.** Per-stroke widths currently
+   come straight from the distance transform. Analyze them to
+   characterize the pen — nominal width, contrast/modulation (thick vs
+   thin), likely nib angle — for better width modelling, width cleanup,
+   and/or font classification.
 
 ## External dependencies
 
