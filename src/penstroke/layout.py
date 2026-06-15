@@ -96,6 +96,8 @@ class Layout:
     line: np.ndarray            # (N,) int line index
     word: np.ndarray            # (N,) int word index (global)
     cluster: np.ndarray         # (N,) int char index in source text
+    char_in_word: np.ndarray    # (N,) int letter index within its word
+    index: np.ndarray           # (N,) int running glyph index (writing order)
     size: float                 # world units per em (uniform pscale)
     n_lines: int = 0
     line_widths: list = field(default_factory=list)   # world units
@@ -165,6 +167,7 @@ def layout(text, font_path, size=1.0, width=None, align='left',
     line_idx = []
     word_idx = []
     cluster = []
+    char_in_word = []
     line_widths = []
     word_counter = -1
     y = 0.0
@@ -184,6 +187,7 @@ def layout(text, font_path, size=1.0, width=None, align='left',
                 x_fu = slack
         for (char_off, records, w_adv) in wlist:
             word_counter += 1
+            giw = 0                       # letter index within this word
             for (gname, x_off, y_off, x_adv, cl) in records:
                 if gname not in _SPACE_NAMES:
                     names.append(gname)
@@ -192,6 +196,8 @@ def layout(text, font_path, size=1.0, width=None, align='left',
                     line_idx.append(li)
                     word_idx.append(word_counter)
                     cluster.append(pbase + char_off + cl)
+                    char_in_word.append(giw)
+                    giw += 1
                 x_fu += x_adv + track_fu
             x_fu += gap_fu
         line_widths.append(max(0.0, (x_fu - gap_fu)) * scale
@@ -204,6 +210,8 @@ def layout(text, font_path, size=1.0, width=None, align='left',
         line=np.asarray(line_idx, dtype=int),
         word=np.asarray(word_idx, dtype=int),
         cluster=np.asarray(cluster, dtype=int),
+        char_in_word=np.asarray(char_in_word, dtype=int),
+        index=np.arange(len(names), dtype=int),
         size=size,
         n_lines=len(lines),
         line_widths=line_widths,

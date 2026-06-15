@@ -45,6 +45,21 @@ def test_cluster_indices():
     print('✓ cluster: source char indices survive layout')
 
 
+def test_char_in_word_and_index():
+    out = layout('hello world', FIXTURE)
+    # idx is a plain running glyph index in writing order.
+    assert list(out.index) == list(range(10)), list(out.index)
+    # char_in_word is the letter's position within its own word.
+    assert list(out.char_in_word) == [0, 1, 2, 3, 4, 0, 1, 2, 3, 4], \
+        list(out.char_in_word)
+    # Across a line break: index stays global, char_in_word resets per word.
+    out = layout('ab\ncd', FIXTURE)
+    assert list(out.index) == [0, 1, 2, 3]
+    assert list(out.word) == [0, 0, 1, 1]
+    assert list(out.char_in_word) == [0, 1, 0, 1]
+    print('✓ char_in_word resets per word; index is global writing order')
+
+
 def test_wrapping():
     text = 'the quick brown fox jumps over the lazy dog'
     out = layout(text, FIXTURE, size=1.0, width=8.0)
@@ -101,6 +116,7 @@ if __name__ == '__main__':
     test_basic()
     test_paragraphs()
     test_cluster_indices()
+    test_char_in_word_and_index()
     test_wrapping()
     test_justify()
     test_align_right()

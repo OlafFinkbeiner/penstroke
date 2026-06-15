@@ -178,6 +178,8 @@ order instead, with these attributes (for your own Copy to Points):
 | `name` (string) | glyph key — the Copy to Points piece attribute |
 | `pscale` | font size (em scale) |
 | `line`, `word`, `cluster` | line number, word index, source char index |
+| `charinword` | letter index within its word (0-based) |
+| `idx` | running glyph index in writing order (0-based) |
 
 ### Place the glyph geometry
 

@@ -7,8 +7,8 @@ Python SOP shim around penstroke.layout (the engine stays in the
 package — `hython -m pip install --user --no-deps -e .` makes it
 importable; the shim raises a clear error if it isn't). Output is one
 point per glyph with `name`, `pscale`, `line`, `word`, `cluster`,
-written with batch APIs. Downstream: Copy to Points, id attribute
-`name`, source = any hfont rep.
+`charinword`, `idx`, written with batch APIs. Downstream: Copy to
+Points, id attribute `name`, source = any hfont rep.
 
 Also rebuilds the demo hip (output/hfont_dev/hfont_demo_hda.hip) using
 the HDA + the Caveat bundle, and renders a PNG proof from the cooked
@@ -77,7 +77,9 @@ if n:
     geo.addAttrib(hou.attribType.Point, 'pscale', 1.0, create_local_variable=False)
     geo.setPointFloatAttribValues('pscale', [out.size] * n)
     for attr, vals in (('line', out.line), ('word', out.word),
-                       ('cluster', out.cluster)):
+                       ('cluster', out.cluster),
+                       ('charinword', out.char_in_word),
+                       ('idx', out.index)):
         geo.addAttrib(hou.attribType.Point, attr, 0, create_local_variable=False)
         geo.setPointIntAttribValues(attr, [int(v) for v in vals])
 '''
@@ -103,7 +105,8 @@ ribbon surfaces (the calligraphic stroke) instead of bare curves.
 
 With __Assemble Glyphs__ off, the output is just the layout points —
 `P` (glyph origin), `name` (glyph key), `pscale` (= font size), and
-`line`, `word`, `cluster` — for your own Copy to Points (Piece
+`line`, `word`, `cluster`, `charinword` (letter index within its word),
+`idx` (running glyph index) — for your own Copy to Points (Piece
 Attribute `name`). See `docs/houdini_workflow.md` for the full guide.
 
 @parameters
@@ -253,7 +256,8 @@ def hda_parm_templates():
             'assemble', 'Assemble Glyphs', default_value=True,
             help='On: Copy the chosen rep onto the layout points (output '
                  '= the laid-out text). Off: output just the layout '
-                 'points (P, name, pscale, line/word/cluster).'),
+                 'points (P, name, pscale, line/word/cluster/charinword/'
+                 'idx).'),
         hou.ToggleParmTemplate(
             'ribbon', 'Build Ribbon', default_value=False,
             disable_when='{ assemble == 0 }',
@@ -340,6 +344,14 @@ def build_hda():
     copy.setInput(1, shim)
     copy.parm('useidattrib').set(True)
     copy.parm('idattrib').set('name')
+    # Forward the per-glyph layout metadata (idx, word, charinword,
+    # line, cluster) from the target points onto each copy, so the
+    # assembled text carries them too. `* ^name ^pscale` = every target
+    # attribute except the piece id (already on the prims) and the copy
+    # scale. Positions are untouched — Copy to Points always protects P.
+    copy.parm('targetattribs').set(1)        # one "Attributes from Target" row
+    copy.parm('useapply1').set(True)
+    copy.parm('applyattribs1').set('* ^name ^pscale')
 
     # Assemble toggle: input1 = assembled glyphs, input0 = bare points.
     switch = subnet.createNode('switch', 'assemble_switch')
