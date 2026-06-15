@@ -188,7 +188,13 @@ Points** with **Piece Attribute** = `name`:
   with a Resample or Convert SOP — set the density you want at use time
   instead of carrying 240 points everywhere. Carries `width`/`u` on the
   CVs, so the swept ribbon still works after resampling.
-- Outline rep: `reps/outline/glyphs.bgeo.sc` — filled glyph outlines.
+- Outline rep: `reps/outline/glyphs.bgeo.sc` — the font's exact cubic
+  Bézier outlines (closed curves), winding-normalized: outer contours
+  CW, holes (counters) CCW, with an `is_hole` prim attribute. Clean
+  separate contours — no bridge/keyhole seam like the Font SOP. To get
+  a filled surface with real holes, **Boolean** the outer against the
+  holes (or convert + a hole-aware fill); the consistent winding makes
+  that predictable.
 
 All are packed, one prim per glyph, keyed by `name` (the TTF post
 glyph name: `A`, `eacute`, …). The polyline `strokes` rep is the

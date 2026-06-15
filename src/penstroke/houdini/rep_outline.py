@@ -238,13 +238,29 @@ def glyph_names_for_charset(tt, charset_chars):
 # Houdini geometry build (needs hou)
 # ---------------------------------------------------------------------------
 
+def _reverse_contour(contour):
+    """Reverse a cubic contour's direction (flips winding, same shape)."""
+    return [(p3, c2, c1, p0) for (p0, c1, c2, p3) in reversed(contour)]
+
+
 def build_glyph_geometry(contours, flags):
-    """One glyph's contours as a hou.Geometry of closed bezier prims."""
+    """One glyph's contours as a hou.Geometry of closed bezier prims.
+
+    Windings are normalized to a consistent convention — outer contours
+    CW (negative signed area), holes CCW (positive) — matching what
+    Houdini's Font SOP and hole-aware ops (Boolean, fills) expect, so
+    the curves drop into a fill/extrude without per-glyph fixing. (The
+    bundle stores clean separate closed contours, no bridge/keyhole
+    seam; cut a real hole downstream with a Boolean.)
+    """
     import hou
     geo = hou.Geometry()
     ci_attr = geo.addAttrib(hou.attribType.Prim, 'contour_index', 0)
     hole_attr = geo.addAttrib(hou.attribType.Prim, 'is_hole', 0)
     for ci, (contour, is_hole) in enumerate(zip(contours, flags)):
+        # holes want positive (CCW) area, outer negative (CW)
+        if (_signed_area(_flatten_contour(contour)) > 0) != bool(is_hole):
+            contour = _reverse_contour(contour)
         prim = geo.createBezierCurve(3 * len(contour), is_closed=True,
                                      order=4)
         pts = prim.points()
