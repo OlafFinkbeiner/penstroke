@@ -214,7 +214,10 @@ launcher = os.path.join(_repo, 'scripts', 'run_trace.cmd')
 for upstream_item in upstream_items:
     w = item_holder.addWorkItem(parent=upstream_item)
     if not os.path.exists(upstream_item.stringAttribValue('trace_done')):
-        w.setCommand('"%s" "%s" "%s" %s "%s"' % (
+        # charset/name as FLAGS (not positional): run_trace.cmd forwards
+        # %* verbatim, so a comma in a variable-font ttf path no longer
+        # shifts the positional args.
+        w.setCommand('"%s" "%s" "%s" --charset %s --name "%s"' % (
             launcher,
             upstream_item.stringAttribValue('ttf'),
             upstream_item.stringAttribValue('trace_dir'),
