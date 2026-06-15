@@ -118,11 +118,13 @@ def _font_info(ttf_path):
     return family, upm
 
 
-def create_bundle(bundle_dir, ttf_path, license_path=None):
+def create_bundle(bundle_dir, ttf_path, license_path=None, category=None):
     """Create (or refresh) a bundle skeleton around a source TTF.
 
     Idempotent: an existing bundle keeps its registered reps; only the
     source font, license, and source manifest fields are refreshed.
+    `category` (e.g. 'HANDWRITING', 'SANS_SERIF') is stored top-level
+    for the text_layout type filter; None leaves any existing value.
     Returns the bundle path.
     """
     os.makedirs(os.path.join(bundle_dir, 'reps'), exist_ok=True)
@@ -160,8 +162,24 @@ def create_bundle(bundle_dir, ttf_path, license_path=None):
         },
         'glyph_keys': GLYPH_KEYS,
     })
+    if category:
+        manifest['category'] = category
     save_manifest(bundle_dir, manifest)
     return bundle_dir
+
+
+def set_category(bundle_dir, category):
+    """Set the manifest's top-level category (idempotent, cheap).
+
+    Lets a cook tag the category even when the reps were cached and not
+    rebuilt. No-op if category is falsy or already set to that value.
+    """
+    if not category:
+        return
+    manifest = load_manifest(bundle_dir)
+    if manifest.get('category') != category:
+        manifest['category'] = category
+        save_manifest(bundle_dir, manifest)
 
 
 def register_rep(bundle_dir, name, kind, geo_relpath, attributes=None,

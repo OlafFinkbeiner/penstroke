@@ -94,9 +94,10 @@ point per glyph in writing order, and (with __Assemble Glyphs__ on)
 copies the chosen rep's geometry onto those points — so the output IS
 the laid-out text, no extra File + Copy to Points wiring.
 
-Pick the __Hfonts Folder__; the __Font__ menu lists the `.hfont`
-bundles in it (open it and type a letter to jump), and the __Rep__ menu
-lists the reps that font contains (strokes, strokes_bezier, outline).
+Pick the __Hfonts Folder__; optionally narrow by __Type__ (Sans Serif,
+Serif, Handwriting, …); the __Font__ menu lists the matching `.hfont`
+bundles (open it and type a letter to jump); and the __Rep__ menu lists
+the reps that font contains (strokes, strokes_bezier, outline).
 strokes_bezier curves can be tessellated downstream with a
 Resample/Convert SOP.
 
@@ -111,8 +112,13 @@ Hfonts Folder:
     A folder containing `.hfont` bundles (e.g. the Penstroke TOPs
     output). Pick it; the Font menu then lists the bundles in it.
 
+Type:
+    Filter the Font menu by Google Fonts category (All / Sans Serif /
+    Serif / Display / Handwriting / Monospace). Uses the cook's
+    index.json; without it, shows all.
+
 Font:
-    Which `.hfont` bundle in the folder to use.
+    Which `.hfont` bundle in the folder (filtered by Type).
 
 Rep:
     Which representation to place — the reps present in the selected
@@ -148,19 +154,36 @@ Line Height (em):
 # a bundle) so <folder>/<token> is the bundle; label = clean family
 # name. hfont.list_bundles is the one ordering source.
 FONT_MENU_SCRIPT = '''
-import os
-from penstroke import hfont
+import os, json
 node = kwargs['node']
 folder = node.evalParm('hfont')
+ftype = node.parm('fonttype').evalAsString()
 items = []
-for b in hfont.list_bundles(folder):
-    if os.path.normpath(b) == os.path.normpath(folder):
-        items += ['.', os.path.basename(os.path.normpath(folder))]
-    else:
-        name = os.path.basename(b)
-        items += [name, name[:-6] if name.endswith('.hfont') else name]
+# Prefer the cook's index.json (one read, carries category); fall back
+# to globbing bundles when it's absent (then no type filter).
+idx_path = os.path.join(folder, 'index.json')
+if os.path.exists(idx_path):
+    try:
+        with open(idx_path, encoding='utf-8') as f:
+            idx = json.load(f)
+    except Exception:
+        idx = {}
+    for dirname in sorted(idx):
+        cat = idx[dirname].get('category') or ''
+        if ftype and ftype != 'ALL' and cat != ftype:
+            continue
+        items += [dirname, dirname[:-6] if dirname.endswith('.hfont')
+                  else dirname]
+else:
+    from penstroke import hfont
+    for b in hfont.list_bundles(folder):
+        if os.path.normpath(b) == os.path.normpath(folder):
+            items += ['.', os.path.basename(os.path.normpath(folder))]
+        else:
+            name = os.path.basename(b)
+            items += [name, name[:-6] if name.endswith('.hfont') else name]
 if not items:
-    items = ['', '(no .hfont bundles in folder)']
+    items = ['', '(no fonts match)']
 return items
 '''
 
@@ -204,10 +227,18 @@ def hda_parm_templates():
             help='Folder containing .hfont bundles. Pick the folder; the '
                  'Font menu then lists the bundles in it.'),
         hou.MenuParmTemplate(
+            'fonttype', 'Type',
+            ('ALL', 'SANS_SERIF', 'SERIF', 'DISPLAY', 'HANDWRITING',
+             'MONOSPACE'),
+            menu_labels=('All', 'Sans Serif', 'Serif', 'Display',
+                         'Handwriting', 'Monospace'),
+            help='Filter the Font menu by Google Fonts category (needs '
+                 'index.json from the cook; else shows all).'),
+        hou.MenuParmTemplate(
             'font', 'Font', (), item_generator_script=FONT_MENU_SCRIPT,
             item_generator_script_language=hou.scriptLanguage.Python,
-            help='Which bundle in the folder. Open the menu and type a '
-                 'letter to jump.'),
+            help='Which bundle in the folder (filtered by Type). Open the '
+                 'menu and type a letter to jump.'),
         hou.MenuParmTemplate(
             'rep', 'Rep', (), item_generator_script=REP_MENU_SCRIPT,
             item_generator_script_language=hou.scriptLanguage.Python,

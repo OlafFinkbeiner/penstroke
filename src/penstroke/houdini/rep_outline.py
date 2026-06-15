@@ -274,12 +274,16 @@ def build_glyph_geometry(contours, flags):
     return geo
 
 
-def build_outline_rep(ttf_path, bundle_dir, charset='latin', verbose=True):
-    """Build the outline rep into a bundle. Returns (n_glyphs, geo_path)."""
+def build_outline_rep(ttf_path, bundle_dir, charset='latin', verbose=True,
+                      category=None):
+    """Build the outline rep into a bundle. Returns (n_glyphs, geo_path).
+
+    `category` (Google Fonts class, e.g. 'SANS_SERIF') is stored in the
+    manifest for the text_layout type filter."""
     import hou
     from fontTools.ttLib import TTFont
 
-    hfont.create_bundle(bundle_dir, ttf_path)
+    hfont.create_bundle(bundle_dir, ttf_path, category=category)
     bundle_font = os.path.join(bundle_dir, hfont.FONT_NAME)
 
     tt = TTFont(bundle_font)

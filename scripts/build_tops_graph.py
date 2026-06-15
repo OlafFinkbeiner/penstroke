@@ -205,6 +205,7 @@ for i, rec in enumerate(records):
     w.setStringAttrib('bundle',
                       os.path.join(bundles_root, norm + '.hfont'))
     w.setStringAttrib('charset', charset)
+    w.setStringAttrib('category', rec.get('category') or '')
     w.setIntAttrib('build_bezier', build_bezier)
 '''
 
@@ -246,6 +247,7 @@ ttf = work_item.attribValue('ttf')
 bundle = work_item.attribValue('bundle')
 store = work_item.attribValue('store')
 charset = work_item.attribValue('charset')
+category = work_item.attribValue('category') or None
 
 from penstroke import hfont
 from penstroke.houdini import rep_outline, rep_strokes
@@ -285,11 +287,14 @@ if os.path.exists(os.path.join(bundle, hfont.MANIFEST_NAME)):
 try:
     if need_outline:
         rep_outline.build_outline_rep(ttf, bundle, charset=charset,
-                                      verbose=False)
+                                      verbose=False, category=category)
     if need_strokes:
         rep_strokes.build_strokes_rep(store, bundle, verbose=False)
     if need_bezier:
         rep_strokes.build_strokes_bezier_rep(store, bundle, verbose=False)
+    # Tag category even when reps were cached (so the type filter works
+    # without a full rebuild).
+    hfont.set_category(bundle, category)
     print('bundle ok:', bundle)
 except Exception:
     import traceback
@@ -305,30 +310,41 @@ import os
 
 bundles_root = cfg.evalParm('bundlesroot')
 rows = []
+index = {}    # dirname -> {family, category, reps} for the HDA filter
 for man_path in sorted(glob.glob(os.path.join(bundles_root, '*.hfont',
                                               'manifest.json'))):
     bundle = os.path.dirname(man_path)
     rel = os.path.basename(bundle)
     with open(man_path, encoding='utf-8') as f:
         man = json.load(f)
-    reps = ', '.join(sorted(man.get('reps', {})))
+    repnames = sorted(man.get('reps', {}))
+    cat = man.get('category') or ''
+    index[rel] = {'family': man.get('family', rel),
+                  'category': cat, 'reps': repnames}
     qa = []
     for rep in ('strokes', 'strokes_bezier', 'outline'):
         png = os.path.join(bundle, 'qa', rep + '.png')
         if os.path.exists(png):
             qa.append('<a href="%s/qa/%s.png">%s</a>' % (rel, rep, rep))
-    rows.append('<tr><td>%s</td><td>%s</td><td>%s</td></tr>'
-                % (html.escape(man['family']), reps, ' '.join(qa)))
+    rows.append('<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>'
+                % (html.escape(man.get('family', rel)), html.escape(cat),
+                   ', '.join(repnames), ' '.join(qa)))
 doc = ('<!DOCTYPE html><meta charset="utf-8"><title>hfonts</title>'
        '<style>body{font-family:system-ui;margin:40px}'
        'td{padding:4px 16px 4px 0}</style>'
        '<h1>hfonts (%d)</h1>' % len(rows)
-       + '<table><tr><th>family</th><th>reps</th><th>QA</th></tr>'
+       + '<table><tr><th>family</th><th>category</th><th>reps</th>'
+       '<th>QA</th></tr>'
        + ''.join(rows) + '</table>')
 with open(os.path.join(bundles_root, 'index.html'), 'w',
           encoding='utf-8') as f:
     f.write(doc)
-print('index:', os.path.join(bundles_root, 'index.html'))
+# Machine-readable index the text_layout HDA reads for its type filter.
+with open(os.path.join(bundles_root, 'index.json'), 'w',
+          encoding='utf-8') as f:
+    json.dump(index, f)
+print('index:', os.path.join(bundles_root, 'index.html'),
+      '+ index.json (%d fonts)' % len(index))
 
 # Also refresh the PREVIEWS index over the trace folders (separate
 # file, batch_handwriting convention: links each font's interactive
