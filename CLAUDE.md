@@ -95,7 +95,11 @@ design/                    Active design docs
 ├── hfont_houdini_plan.md  Houdini TOPs + hfont plan (phase status lives here)
 ├── qa_cleanup_spec.json   QA/cleanup architecture (multi-lens synthesis)
 ├── epst_batch_qa_v2.json  Current 6-font QA: issue classes + verdicts
-└── cascade_results_v2.json Deterministic detector findings + calibration notes
+├── cascade_results_v2.json Deterministic detector findings + calibration notes
+└── animation_handoff.md   What's available for animating the output:
+                           stroke attributes (u/width/arclength/
+                           stroke_index) + layout attrs (idx/word/line/
+                           charinword), how the draw-on works today
 
 scripts/batch_google_fonts.py   Batch runner (edit FONTS list at top)
 scripts/build_tops_graph.py     Builds penstroke_tops.hip; --make-hda
