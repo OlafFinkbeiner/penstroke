@@ -442,9 +442,12 @@ def _topnet_parm_templates():
     return [
         hou.StringParmTemplate(
             'roots', 'Font Roots (one per line)', 1,
+            default_value=('$PENSTROKE/output/handwriting',),
             tags={'editor': '1', 'editorlines': '3'},
             help='Directories to scan: google/fonts checkouts, '
-                 'penstroke trace outputs, or plain TTF folders.'),
+                 'penstroke trace outputs, or plain TTF folders. '
+                 'Defaults to the trace outputs; add your google/fonts '
+                 'checkout on a new line to pick up categories.'),
         hou.StringParmTemplate(
             'tracesroot', 'Traces Root', 1,
             default_value=('$PENSTROKE/output/handwriting',),
