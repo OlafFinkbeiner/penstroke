@@ -399,6 +399,15 @@ def split_components(G, skel):
 MAX_CONTINUATION_TURN_DEG = 75.0   # max turn angle for two edge-ends to
                                    # count as one continuing pen motion
 
+# Above this junction degree the exhaustive pairing search (which is
+# super-exponential in degree) is replaced by a greedy one. Normal
+# glyphs almost never exceed degree ~6; only pathological textured fonts
+# (Rubik Distressed/Maps/...) produce very high-degree spur junctions
+# that would otherwise hang analyze_junctions for tens of seconds. At or
+# below this degree the exhaustive search runs unchanged, so ordinary
+# fonts are byte-for-byte identical.
+MAX_EXHAUSTIVE_DEGREE = 8
+
 
 def _edge_ends_at(G, v):
     """All edge-ends incident to node v.
@@ -484,35 +493,55 @@ def analyze_junctions(G):
                 s = _pair_score(ends[i]['tangent'], ends[j]['tangent'])
                 score[(i, j)] = s if s <= max_turn else None
 
-        # Exhaustive best pairing over index set.
-        best = {'cost': None, 'pairs': []}
+        if n <= MAX_EXHAUSTIVE_DEGREE:
+            # Exhaustive best pairing over the index set.
+            best = {'cost': None, 'pairs': []}
 
-        def search(remaining, pairs, cost):
-            if cost is not None and best['cost'] is not None \
-                    and cost >= best['cost']:
-                return
-            if not remaining:
-                if best['cost'] is None or cost < best['cost']:
-                    best['cost'] = cost
-                    best['pairs'] = list(pairs)
-                return
-            i = remaining[0]
-            rest = remaining[1:]
-            # Option: leave i unpaired.
-            search(rest, pairs, cost + unpaired_cost)
-            # Option: pair i with each j.
-            for j in rest:
-                s = score.get((min(i, j), max(i, j)))
-                if s is None:
+            def search(remaining, pairs, cost):
+                if cost is not None and best['cost'] is not None \
+                        and cost >= best['cost']:
+                    return
+                if not remaining:
+                    if best['cost'] is None or cost < best['cost']:
+                        best['cost'] = cost
+                        best['pairs'] = list(pairs)
+                    return
+                i = remaining[0]
+                rest = remaining[1:]
+                # Option: leave i unpaired.
+                search(rest, pairs, cost + unpaired_cost)
+                # Option: pair i with each j.
+                for j in rest:
+                    s = score.get((min(i, j), max(i, j)))
+                    if s is None:
+                        continue
+                    rest2 = [x for x in rest if x != j]
+                    pairs.append((i, j))
+                    search(rest2, pairs, cost + s)
+                    pairs.pop()
+
+            search(list(range(n)), [], 0.0)
+            chosen = best['pairs']
+        else:
+            # Greedy fallback for very high-degree junctions: take the
+            # allowed pairs cheapest (smoothest) first, never reusing an
+            # end. Every allowed pair beats leaving both ends unpaired (an
+            # allowed score <= max_turn < unpaired_cost), so greedy only
+            # forgoes optimality of WHICH smooth pairs win — immaterial at
+            # the spur-tangle junctions this guards, and it turns a
+            # multi-second (or hanging) search into microseconds.
+            chosen = []
+            used = set()
+            for s, pi, pj in sorted((sc, a, b)
+                                    for (a, b), sc in score.items()
+                                    if sc is not None):
+                if pi in used or pj in used:
                     continue
-                rest2 = [x for x in rest if x != j]
-                pairs.append((i, j))
-                search(rest2, pairs, cost + s)
-                pairs.pop()
+                used.add(pi)
+                used.add(pj)
+                chosen.append((pi, pj))
 
-        search(list(range(n)), [], 0.0)
-
-        for (i, j) in best['pairs']:
+        for (i, j) in chosen:
             a = (ends[i]['eid'], ends[i]['side'])
             b = (ends[j]['eid'], ends[j]['side'])
             pairing[a] = b
