@@ -244,6 +244,7 @@ for upstream_item in upstream_items:
 '''
 
 BUILD_CODE = '''
+import hashlib
 import os
 
 ttf = work_item.attribValue('ttf')
@@ -256,10 +257,60 @@ from penstroke import hfont
 from penstroke.houdini import rep_outline, rep_strokes
 
 
-def current(geo_path, src_path):
-    return (os.path.exists(geo_path) and os.path.exists(src_path)
-            and os.path.getmtime(geo_path) >= os.path.getmtime(src_path))
+def fingerprint(path):
+    """sha1 of a source file's bytes: a content signature that does NOT
+    move when a re-clone/copy bumps the mtime, or when a different root
+    supplies the same font. None if unreadable. This is what makes the
+    cache immune to the path/mtime that the scan happened to pick."""
+    try:
+        h = hashlib.sha1()
+        with open(path, 'rb') as f:
+            for chunk in iter(lambda: f.read(1 << 20), b''):
+                h.update(chunk)
+        return h.hexdigest()
+    except OSError:
+        return None
 
+
+def fp_file(rep):
+    return os.path.join(bundle, 'reps', rep, '.src.sha1')
+
+
+def write_fp(rep, src_fp):
+    if src_fp is None:
+        return
+    try:
+        os.makedirs(os.path.dirname(fp_file(rep)), exist_ok=True)
+        with open(fp_file(rep), 'w') as f:
+            f.write(src_fp)
+    except OSError:
+        pass
+
+
+def rep_current(rep, geo_path, src_path, src_fp):
+    """A rep is up to date if its geo exists and the source CONTENT
+    matches the fingerprint recorded when it was last built. First
+    encounter (no fingerprint yet): an existing, mtime-current geo is
+    ADOPTED -- its fingerprint is written without a rebuild -- so adding
+    this cache never forces one full re-cook of already-built bundles."""
+    if src_fp is None or not os.path.exists(geo_path):
+        return False
+    fpp = fp_file(rep)
+    if os.path.exists(fpp):
+        try:
+            with open(fpp) as f:
+                return f.read().strip() == src_fp
+        except OSError:
+            return False
+    if os.path.exists(src_path) and \\
+            os.path.getmtime(geo_path) >= os.path.getmtime(src_path):
+        write_fp(rep, src_fp)
+        return True
+    return False
+
+
+fp_ttf = fingerprint(ttf)
+fp_store = fingerprint(store) if os.path.exists(store) else None
 
 need_outline = True
 need_strokes = os.path.exists(store)
@@ -273,14 +324,16 @@ if not need_strokes:
 if os.path.exists(os.path.join(bundle, hfont.MANIFEST_NAME)):
     try:
         hf = hfont.HFont(bundle)
-        if 'outline' in hf.manifest['reps'] and \\
-                current(hf.rep_geo_path('outline'), ttf):
+        reps = hf.manifest['reps']
+        if 'outline' in reps and rep_current(
+                'outline', hf.rep_geo_path('outline'), ttf, fp_ttf):
             need_outline = False
-        if need_strokes and 'strokes' in hf.manifest['reps'] and \\
-                current(hf.rep_geo_path('strokes'), store):
+        if need_strokes and 'strokes' in reps and rep_current(
+                'strokes', hf.rep_geo_path('strokes'), store, fp_store):
             need_strokes = False
-        if need_bezier and 'strokes_bezier' in hf.manifest['reps'] and \\
-                current(hf.rep_geo_path('strokes_bezier'), store):
+        if need_bezier and 'strokes_bezier' in reps and rep_current(
+                'strokes_bezier', hf.rep_geo_path('strokes_bezier'),
+                store, fp_store):
             need_bezier = False
     except Exception:
         pass
@@ -291,14 +344,21 @@ try:
     if need_outline:
         rep_outline.build_outline_rep(ttf, bundle, charset=charset,
                                       verbose=False, category=category)
+        write_fp('outline', fp_ttf)
     if need_strokes:
         rep_strokes.build_strokes_rep(store, bundle, verbose=False)
+        write_fp('strokes', fp_store)
     if need_bezier:
         rep_strokes.build_strokes_bezier_rep(store, bundle, verbose=False)
+        write_fp('strokes_bezier', fp_store)
     # Tag category even when reps were cached (so the type filter works
     # without a full rebuild).
     hfont.set_category(bundle, category)
-    print('bundle ok:', bundle)
+    built = [r for r, n in (('outline', need_outline),
+                            ('strokes', need_strokes),
+                            ('bezier', need_bezier)) if n]
+    print('bundle ok:', os.path.basename(bundle),
+          ('rebuilt ' + ','.join(built)) if built else 'all cached')
 except Exception:
     import traceback
     print('BUNDLE FAILED:', work_item.attribValue('family'))

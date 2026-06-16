@@ -117,8 +117,10 @@ Hfonts Folder:
 
 Type:
     Filter the Font menu by Google Fonts category (All / Sans Serif /
-    Serif / Display / Handwriting / Monospace). Uses the cook's
-    index.json; without it, shows all.
+    Serif / Display / Handwriting / Monospace). Categories come from the
+    cook's index.json; bundles with no recorded category show under All.
+    The menu always lists every `.hfont` on disk, even before the cook
+    has indexed them.
 
 Font:
     Which `.hfont` bundle in the folder (filtered by Type).
@@ -162,34 +164,35 @@ Line Height (em):
 # a bundle) so <folder>/<token> is the bundle; label = clean family
 # name. hfont.list_bundles is the one ordering source.
 FONT_MENU_SCRIPT = '''
-import os, json
+import os, json, glob
 node = kwargs['node']
 folder = node.evalParm('hfont')
 ftype = node.parm('fonttype').evalAsString()
-items = []
-# Prefer the cook's index.json (one read, carries category); fall back
-# to globbing bundles when it's absent (then no type filter).
+# Availability comes from the bundles that ACTUALLY exist on disk, so a
+# stale or partial index.json never hides a font. index.json (written
+# by the cook) only supplies the category, used to drive the Type
+# filter; a font absent from it has unknown category and shows under
+# All only.
+cats = {}
 idx_path = os.path.join(folder, 'index.json')
 if os.path.exists(idx_path):
     try:
         with open(idx_path, encoding='utf-8') as f:
-            idx = json.load(f)
+            cats = {k: (v.get('category') or '')
+                    for k, v in json.load(f).items()}
     except Exception:
-        idx = {}
-    for dirname in sorted(idx):
-        cat = idx[dirname].get('category') or ''
-        if ftype and ftype != 'ALL' and cat != ftype:
-            continue
-        items += [dirname, dirname[:-6] if dirname.endswith('.hfont')
-                  else dirname]
-else:
-    from penstroke import hfont
-    for b in hfont.list_bundles(folder):
-        if os.path.normpath(b) == os.path.normpath(folder):
-            items += ['.', os.path.basename(os.path.normpath(folder))]
-        else:
-            name = os.path.basename(b)
-            items += [name, name[:-6] if name.endswith('.hfont') else name]
+        cats = {}
+bundles = sorted(glob.glob(os.path.join(folder, '*.hfont')))
+if not bundles and os.path.exists(os.path.join(folder, 'manifest.json')):
+    bundles = [folder]      # the folder itself is a single bundle
+items = []
+for bundle in bundles:
+    base = os.path.basename(bundle.rstrip('/\\\\'))
+    token = '.' if bundle == folder else base
+    if ftype and ftype != 'ALL' and cats.get(base, '') != ftype:
+        continue
+    label = base[:-6] if base.endswith('.hfont') else base
+    items += [token, label]
 if not items:
     items = ['', '(no fonts match)']
 return items
@@ -240,8 +243,10 @@ def hda_parm_templates():
              'MONOSPACE'),
             menu_labels=('All', 'Sans Serif', 'Serif', 'Display',
                          'Handwriting', 'Monospace'),
-            help='Filter the Font menu by Google Fonts category (needs '
-                 'index.json from the cook; else shows all).'),
+            help='Filter the Font menu by Google Fonts category (from the '
+                 "cook's index.json). Fonts with no recorded category "
+                 'show under All only; every bundle on disk is listed '
+                 'regardless.'),
         hou.MenuParmTemplate(
             'font', 'Font', (), item_generator_script=FONT_MENU_SCRIPT,
             item_generator_script_language=hou.scriptLanguage.Python,

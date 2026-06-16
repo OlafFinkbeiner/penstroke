@@ -137,6 +137,22 @@ def _scan_dir(folder):
     return None
 
 
+def _enrich(base, rec):
+    """Fold a second same-family record into ``base`` (in place).
+
+    A Google Fonts checkout dir contributes category/license; a
+    penstroke trace dir contributes store/trace_dir (and the source TTF
+    that was actually traced). Each field is filled only where ``base``
+    lacks it, so the merge is independent of which dir was walked first.
+    """
+    if rec.get('trace_dir') and not base.get('trace_dir'):
+        base['ttf'] = rec['ttf']        # prefer the traced source TTF
+    for field in ('store', 'trace_dir', 'category', 'license',
+                  'license_file'):
+        if not base.get(field) and rec.get(field):
+            base[field] = rec[field]
+
+
 def scan(roots, name=None, category=None, dedupe=True, limit=None):
     """Discover fonts under the given roots. Returns a list of records.
 
@@ -145,12 +161,14 @@ def scan(roots, name=None, category=None, dedupe=True, limit=None):
         name: case-insensitive regex matched against the family name.
         category: Google Fonts category filter (e.g. 'HANDWRITING');
             records without a category pass only if category is None.
-        dedupe: keep one record per family (first found).
+        dedupe: one record per family. A family found as BOTH a trace
+            output (no category) and a Google Fonts checkout (carries
+            category) is merged — the trace store plus the checkout
+            category — so the category survives regardless of walk order.
         limit: stop after N records (post-filter).
     """
     name_re = re.compile(name, re.IGNORECASE) if name else None
-    records = []
-    seen_families = set()
+    found = []
     for root in roots:
         root = os.path.abspath(root)
         for dirpath, dirnames, filenames in os.walk(root):
@@ -169,16 +187,28 @@ def scan(roots, name=None, category=None, dedupe=True, limit=None):
                 dirnames[:] = []   # classified dir: don't descend further
             if name_re and not name_re.search(rec['family']):
                 continue
-            if category and rec['category'] != category:
-                continue
-            if dedupe:
-                key = rec['family'].lower()
-                if key in seen_families:
-                    continue
-                seen_families.add(key)
-            records.append(rec)
-            if limit and len(records) >= limit:
-                return records
+            found.append(rec)
+
+    if dedupe:
+        order = []
+        by_family = {}
+        for rec in found:
+            key = rec['family'].lower()
+            base = by_family.get(key)
+            if base is None:
+                by_family[key] = dict(rec)
+                order.append(key)
+            else:
+                _enrich(base, rec)
+        records = [by_family[k] for k in order]
+    else:
+        records = found
+
+    # Category filter AFTER the merge, so an enriched category counts.
+    if category:
+        records = [r for r in records if r['category'] == category]
+    if limit:
+        records = records[:limit]
     return records
 
 
