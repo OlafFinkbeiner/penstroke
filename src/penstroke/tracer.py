@@ -76,6 +76,49 @@ def _path_arc_length(path):
     return float(np.hypot(diffs[:, 0], diffs[:, 1]).sum())
 
 
+_NN_WALK_EXACT_MAX = 1000   # above this many pixels a scrambled edge is
+                            # reordered with a KDTree (O(n log n)) instead
+                            # of the exact O(n^2) scan. The threshold sits
+                            # far above any real glyph edge; only texture
+                            # fonts (Rubik Beastly/...) ever make an edge
+                            # of several thousand scrambled pixels, where
+                            # O(n^2) costs tens of seconds.
+
+
+def _nn_walk_kdtree(pts, start):
+    """Nearest-neighbour walk over `pts` from `start`, via a KDTree so it
+    stays O(n log n) on very long scrambled edges. Same rule as the O(n^2)
+    scan — nearest unvisited pixel at each step."""
+    from scipy.spatial import cKDTree
+    uniq = list(dict.fromkeys(pts))
+    arr = np.asarray(uniq, dtype=float)
+    tree = cKDTree(arr)
+    n = len(uniq)
+    visited = bytearray(n)
+    cur = uniq.index(start)
+    visited[cur] = 1
+    order = [cur]
+    for _ in range(n - 1):
+        k = 4
+        nxt = -1
+        while True:
+            kk = min(k, n)
+            _, ii = tree.query(arr[cur], k=kk)
+            for j in np.atleast_1d(ii):
+                if not visited[j]:
+                    nxt = int(j)
+                    break
+            if nxt >= 0 or kk >= n:
+                break
+            k *= 2
+        if nxt < 0:
+            break
+        visited[nxt] = 1
+        order.append(nxt)
+        cur = nxt
+    return [uniq[i] for i in order]
+
+
 def _reorder_scrambled_path(path, u):
     """Repair a pixel path whose ordering is scrambled.
 
@@ -98,6 +141,8 @@ def _reorder_scrambled_path(path, u):
     pts = [tuple(p) for p in path]
     # Start from whichever endpoint pixel is closest to u.
     start = min(pts, key=lambda p: (p[0] - u[0]) ** 2 + (p[1] - u[1]) ** 2)
+    if len(pts) > _NN_WALK_EXACT_MAX:
+        return _nn_walk_kdtree(pts, start)
     remaining = set(pts)
     remaining.discard(start)
     ordered = [start]
@@ -252,6 +297,16 @@ def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
     return G
 
 
+PRUNE_MAX_EDGES = 100   # above this many skeleton edges, skip the
+                        # redundant-leaf prune: it is O(leaves x disk
+                        # window) and a few decorative fonts (Rubik
+                        # Beastly/...) make a glyph with hundreds of spur
+                        # leaves that cost 10s+. Ordinary latin glyphs sit
+                        # well under this (tens of edges), so their prune
+                        # is unchanged; texture glyphs just keep the spurs
+                        # as extra short strokes, which suits them.
+
+
 def build_annotated_graph(skel, dist_map, mask=None):
     """Build the cleaned skeleton multigraph with arc-length + tangent edge
     annotations.
@@ -302,7 +357,10 @@ def build_annotated_graph(skel, dist_map, mask=None):
         G.remove_edge(u, v, key=k)
 
     # --- Hygiene pass 3: prune redundant leaf branches ---------------
-    if mask is not None:
+    # Skipped on texture-dense skeletons (see PRUNE_MAX_EDGES): the prune
+    # is O(leaves x window) and would cost 10s+ on a glyph with hundreds
+    # of spur leaves. Ordinary glyphs are far below the cap, so unchanged.
+    if mask is not None and G.number_of_edges() <= PRUNE_MAX_EDGES:
         prune_redundant_leaves(G, dist_map, mask)
 
     G = collapse_parallel_edges(G, dist_map)
