@@ -183,6 +183,7 @@ roots = [r.strip() for r in top.evalParm('roots').splitlines()
 records = scan(roots,
                name=top.evalParm('namefilter') or None,
                category=top.evalParm('category') or None,
+               exclude=top.evalParm('excludefilter') or None,
                limit=top.evalParm('limit') or None)
 charset = top.parm('charset').evalAsString()
 traces_root = top.evalParm('tracesroot')
@@ -474,6 +475,13 @@ def _topnet_parm_templates():
         hou.StringParmTemplate(
             'namefilter', 'Family Name Regex', 1),
         hou.StringParmTemplate(
+            'excludefilter', 'Exclude Families Regex', 1,
+            help='Case-insensitive regex; families matching it are '
+                 'dropped before tracing — for fonts too detailed to '
+                 'trace (the tracer never finishes) or otherwise out of '
+                 'scope. Matched with and without spaces, so '
+                 '"rubikmaps" also catches "Rubik Maps".'),
+        hou.StringParmTemplate(
             'category', 'Google Fonts Category', 1,
             help='e.g. HANDWRITING. Empty = all. Only applies to '
                  'METADATA.pb records.'),
@@ -586,6 +594,9 @@ def main(argv=None):
     ap.add_argument('--corel', default=DEFAULT_COREL,
                     help='Global Corel exchange folder.')
     ap.add_argument('--name', default='')
+    ap.add_argument('--exclude', default='',
+                    help='Regex of families to drop (too-detailed / out '
+                         'of scope).')
     ap.add_argument('--category', default='')
     ap.add_argument('--charset', default='latin',
                     choices=['ascii', 'latin', 'all'])
@@ -620,6 +631,7 @@ def main(argv=None):
     topnet.parm('corelroot').set(os.path.abspath(args.corel))
     os.makedirs(os.path.abspath(args.corel), exist_ok=True)
     topnet.parm('namefilter').set(args.name)
+    topnet.parm('excludefilter').set(args.exclude)
     topnet.parm('category').set(args.category)
     topnet.parm('charset').set(args.charset)
     topnet.parm('limit').set(args.limit)

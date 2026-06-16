@@ -18,11 +18,13 @@ FIXTURE = os.path.join(os.path.dirname(__file__), 'fixtures', 'caveat.ttf')
 def _make_tree(tmp):
     """A family present BOTH as a Google checkout (with category) and a
     penstroke trace output (with a stroke store), under separate roots."""
+    # Google family name has a space ("Test Fam"); the trace dir is the
+    # normalized "testfam" — they must still merge.
     gf = os.path.join(tmp, 'gf', 'testfam')
     os.makedirs(gf)
-    shutil.copy(FIXTURE, os.path.join(gf, 'Testfam-Regular.ttf'))
+    shutil.copy(FIXTURE, os.path.join(gf, 'TestFam-Regular.ttf'))
     with open(os.path.join(gf, 'METADATA.pb'), 'w', encoding='utf-8') as f:
-        f.write('name: "Testfam"\ncategory: "HANDWRITING"\nlicense: "OFL"\n')
+        f.write('name: "Test Fam"\ncategory: "HANDWRITING"\nlicense: "OFL"\n')
     with open(os.path.join(gf, 'OFL.txt'), 'w', encoding='utf-8') as f:
         f.write('license')
 
@@ -66,7 +68,22 @@ def test_category_filter_uses_merged_value():
     print('✓ filter: category filter honors the merged category')
 
 
+def test_exclude_drops_family():
+    with tempfile.TemporaryDirectory() as tmp:
+        gf_root, tr_root = _make_tree(tmp)
+        assert len(scan([gf_root, tr_root])) == 1          # baseline
+        # excluded by the spaceless form, case-insensitively, and
+        # whether discovered via the trace dir or the Google checkout
+        assert scan([gf_root, tr_root], exclude='testfam') == []
+        assert scan([tr_root], exclude='TESTFAM') == []
+        assert scan([gf_root], exclude='testfam') == []
+        # a non-matching pattern leaves it in
+        assert len(scan([gf_root, tr_root], exclude='nomatch')) == 1
+    print('✓ exclude: matching families are dropped, in any layout')
+
+
 if __name__ == '__main__':
     test_merge_category_and_store_either_order()
     test_category_filter_uses_merged_value()
+    test_exclude_drops_family()
     print('\nAll fontscan tests passed.')

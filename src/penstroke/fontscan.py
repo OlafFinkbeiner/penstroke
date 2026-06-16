@@ -153,7 +153,8 @@ def _enrich(base, rec):
             base[field] = rec[field]
 
 
-def scan(roots, name=None, category=None, dedupe=True, limit=None):
+def scan(roots, name=None, category=None, dedupe=True, limit=None,
+         exclude=None):
     """Discover fonts under the given roots. Returns a list of records.
 
     Args:
@@ -166,8 +167,14 @@ def scan(roots, name=None, category=None, dedupe=True, limit=None):
             category) is merged — the trace store plus the checkout
             category — so the category survives regardless of walk order.
         limit: stop after N records (post-filter).
+        exclude: case-insensitive regex; families matching it are
+            dropped entirely (no trace, no bundle) — for fonts that are
+            too detailed to trace or otherwise out of scope. Matched
+            against the family both as-is and with spaces removed, so
+            "rubikmaps" catches "Rubik Maps" too.
     """
     name_re = re.compile(name, re.IGNORECASE) if name else None
+    exclude_re = re.compile(exclude, re.IGNORECASE) if exclude else None
     found = []
     for root in roots:
         root = os.path.abspath(root)
@@ -187,13 +194,21 @@ def scan(roots, name=None, category=None, dedupe=True, limit=None):
                 dirnames[:] = []   # classified dir: don't descend further
             if name_re and not name_re.search(rec['family']):
                 continue
+            if exclude_re and (
+                    exclude_re.search(rec['family'])
+                    or exclude_re.search(rec['family'].replace(' ', ''))):
+                continue
             found.append(rec)
 
     if dedupe:
         order = []
         by_family = {}
         for rec in found:
-            key = rec['family'].lower()
+            # Key by the pipeline's canonical identity (lowercase, no
+            # spaces) — the same `norm` used for trace/bundle dirs — so a
+            # Google "Rubik Maps" and its "rubikmaps" trace dir collapse
+            # to one record. Plain family.lower() would not match them.
+            key = rec['family'].lower().replace(' ', '')
             base = by_family.get(key)
             if base is None:
                 by_family[key] = dict(rec)
@@ -220,6 +235,9 @@ def main(argv=None):
                     help='Regex on the family name (case-insensitive).')
     ap.add_argument('--category', default=None,
                     help="Google Fonts category, e.g. HANDWRITING.")
+    ap.add_argument('--exclude', default=None,
+                    help='Regex of families to drop (too-detailed / out '
+                         'of scope); matches with and without spaces.')
     ap.add_argument('--no-dedupe', action='store_true')
     ap.add_argument('--limit', type=int, default=None)
     ap.add_argument('--json', default=None,
@@ -227,7 +245,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
 
     records = scan(args.roots, name=args.name, category=args.category,
-                   dedupe=not args.no_dedupe, limit=args.limit)
+                   dedupe=not args.no_dedupe, limit=args.limit,
+                   exclude=args.exclude)
     payload = json.dumps(records, indent=2, ensure_ascii=False)
     if args.json:
         with open(args.json, 'w', encoding='utf-8') as f:
