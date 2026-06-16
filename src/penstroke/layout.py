@@ -126,21 +126,29 @@ def layout(text, font_path, size=1.0, width=None, align='left',
     scale = size / font.upem
     track_fu = tracking * font.upem    # tracking in font units
 
-    _, space_adv = shape(font, ' ', features)
-    space_adv += track_fu
-
     # --- collect lines
     # Each line: (words, is_last_of_paragraph, para_char_base) where
-    # words = [(char_offset_in_paragraph, records, advance_fu), ...].
+    # words = [(char_offset_in_paragraph, records, advance_fu,
+    #           gap_before_fu), ...]. gap_before is the width of the
+    # actual whitespace run preceding the word, so runs of spaces (or
+    # tabs) are honored rather than collapsed to a single space.
     # para_char_base lifts word offsets to text-global cluster indices.
     lines = []
     char_base = 0
     for para in text.split('\n'):
         words = []
+        prev_end = 0
         for m in _WORD_RE.finditer(para):
+            gap_text = para[prev_end:m.start()]
+            if gap_text:
+                _, gap_adv = shape(font, gap_text, features)
+                gap_adv += track_fu * len(gap_text)
+            else:
+                gap_adv = 0.0
             records, adv = shape(font, m.group(), features)
             adv += track_fu * len(records)
-            words.append((m.start(), records, adv))
+            words.append((m.start(), records, adv, gap_adv))
+            prev_end = m.end()
         if not words:
             lines.append(([], True, char_base))      # blank line
         elif width is None:
@@ -151,7 +159,8 @@ def layout(text, font_path, size=1.0, width=None, align='left',
             run = 0.0
             for w in words:
                 w_adv = w[2]
-                needed = run + (space_adv if current else 0.0) + w_adv
+                gap = w[3]
+                needed = run + (gap if current else 0.0) + w_adv
                 if current and needed > width_fu:
                     lines.append((current, False, char_base))
                     current, run = [w], w_adv
@@ -172,20 +181,24 @@ def layout(text, font_path, size=1.0, width=None, align='left',
     word_counter = -1
     y = 0.0
     for li, (wlist, is_last, pbase) in enumerate(lines):
-        total_fu = sum(w[2] for w in wlist) \
-            + space_adv * max(0, len(wlist) - 1)
-        gap_fu = space_adv
+        # Inter-word gaps come from the source whitespace (word[3]); the
+        # first word on a line has no leading gap.
+        gaps_fu = sum(w[3] for w in wlist[1:])
+        total_fu = sum(w[2] for w in wlist) + gaps_fu
+        extra_gap = 0.0       # even slack added per gap when justifying
         x_fu = 0.0
         if width is not None:
             width_fu = width / scale
             slack = width_fu - total_fu
             if align == 'justify' and not is_last and len(wlist) > 1:
-                gap_fu = space_adv + slack / (len(wlist) - 1)
+                extra_gap = slack / (len(wlist) - 1)
             elif align == 'center':
                 x_fu = slack / 2.0
             elif align == 'right':
                 x_fu = slack
-        for (char_off, records, w_adv) in wlist:
+        for wi, (char_off, records, w_adv, gap_before) in enumerate(wlist):
+            if wi > 0:
+                x_fu += gap_before + extra_gap
             word_counter += 1
             giw = 0                       # letter index within this word
             for (gname, x_off, y_off, x_adv, cl) in records:
@@ -199,9 +212,7 @@ def layout(text, font_path, size=1.0, width=None, align='left',
                     char_in_word.append(giw)
                     giw += 1
                 x_fu += x_adv + track_fu
-            x_fu += gap_fu
-        line_widths.append(max(0.0, (x_fu - gap_fu)) * scale
-                           if wlist else 0.0)
+        line_widths.append(max(0.0, x_fu) * scale if wlist else 0.0)
         y -= line_height * size
 
     return Layout(

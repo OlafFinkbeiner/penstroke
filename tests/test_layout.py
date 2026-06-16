@@ -97,6 +97,19 @@ def test_tracking():
     print('✓ tracking: +0.5em per glyph')
 
 
+def test_multiple_spaces():
+    font = get_font(FIXTURE)
+    _, sp = shape(font, ' ')
+    sp_world = sp / font.upem            # one space advance at size 1.0
+    b1 = layout('a b', FIXTURE).positions[1, 0]
+    b2 = layout('a  b', FIXTURE).positions[1, 0]
+    b3 = layout('a   b', FIXTURE).positions[1, 0]
+    # Each extra space widens the inter-word gap by one space advance.
+    assert abs((b2 - b1) - sp_world) < EPS, (b2 - b1, sp_world)
+    assert abs((b3 - b1) - 2 * sp_world) < EPS, (b3 - b1, sp_world)
+    print('✓ multiple spaces: each extra space widens the inter-word gap')
+
+
 def test_caching():
     font = get_font(FIXTURE)
     a = shape(font, 'memoized')
@@ -121,6 +134,7 @@ if __name__ == '__main__':
     test_justify()
     test_align_right()
     test_tracking()
+    test_multiple_spaces()
     test_caching()
     test_glyph_names_match_hfont_keying()
     print('\nAll layout tests passed.')
