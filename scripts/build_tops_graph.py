@@ -534,7 +534,14 @@ def build_graph(parent_path='/obj', parms_on=None):
 
     build = topnet.createNode('pythonscript', 'build_bundle')
     build.setInput(0, sync)
-    build.parm('inprocess').set(True)
+    # Out-of-process: each bundle cooks in its own worker, so the task
+    # bar advances per font (in-process ran one blocking sweep that
+    # froze the count) and the build fans out across all cores — the
+    # rebuilds (the multi-second bezier fit) parallelize. The content
+    # fingerprint cache makes the cheap "all cached" pass safe to repeat
+    # per worker. Bundles are independent files, so parallel writes
+    # never collide.
+    build.parm('inprocess').set(False)
     build.parm('pdg_workitemgeneration').set('0')   # from cooked items
     build.parm('script').set(BUILD_CODE)
 
