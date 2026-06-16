@@ -534,14 +534,13 @@ def build_graph(parent_path='/obj', parms_on=None):
 
     build = topnet.createNode('pythonscript', 'build_bundle')
     build.setInput(0, sync)
-    # Out-of-process: each bundle cooks in its own worker, so the task
-    # bar advances per font (in-process ran one blocking sweep that
-    # froze the count) and the build fans out across all cores — the
-    # rebuilds (the multi-second bezier fit) parallelize. The content
-    # fingerprint cache makes the cheap "all cached" pass safe to repeat
-    # per worker. Bundles are independent files, so parallel writes
-    # never collide.
-    build.parm('inprocess').set(False)
+    # In-process: a pythonscript TOP is ONE scheduler task regardless of
+    # the inprocess toggle, so out-of-process gained nothing (still
+    # serial, just off-thread and slower from worker startup) and the
+    # task bar still froze. In-process is the fastest of the two. A
+    # moving per-font counter + real parallelism needs a COMMAND-based
+    # stage (one task per font, like trace_missing) — see build-bundles.
+    build.parm('inprocess').set(True)
     build.parm('pdg_workitemgeneration').set('0')   # from cooked items
     build.parm('script').set(BUILD_CODE)
 
