@@ -75,9 +75,13 @@ font_scan → trace_missing → sync_edits → build_bundle → wait_all → mak
   is cheap.
 - **sync_edits** — the Corel handshake. Only fonts with pending
   selections or edited CSVs get a command; everything else is free.
-- **build_bundle** — (re)builds each `.hfont`. An mtime check rebuilds
-  the strokes rep whenever `strokes.json` changed, so a freshly merged
-  edit produces an updated bundle **in the same cook**.
+- **build_bundle** — (re)builds each `.hfont`, **one task per font** so
+  the task bar advances per font and fonts build in parallel across the
+  scheduler's slots (each task is a `hython` worker via
+  `scripts/run_build.cmd`). A rep is rebuilt only when the **content**
+  of its source changed — a sha1 fingerprint of the ttf / `strokes.json`,
+  not its mtime — so a freshly merged edit rebuilds in the same cook,
+  while a re-clone that only bumps mtimes rebuilds nothing.
 - **make_index** — writes `hfonts/index.html` (the bundle library) and
   `handwriting/index.html` (links every font's preview.html).
 

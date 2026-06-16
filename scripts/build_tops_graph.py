@@ -244,126 +244,38 @@ for upstream_item in upstream_items:
         w.setCommand(cmd)
 '''
 
-BUILD_CODE = '''
-import hashlib
-import os
+BUILD_GEN_CODE = CFG_FINDER + REPO_FROM_PACKAGE + '''
+import os, json, hashlib
 
-ttf = work_item.attribValue('ttf')
-bundle = work_item.attribValue('bundle')
-store = work_item.attribValue('store')
-charset = work_item.attribValue('charset')
-category = work_item.attribValue('category') or None
+# One command PER FONT (same shape as trace_missing): each font is its
+# own scheduler task with an upstream parent, so the task bar advances
+# per font and fonts build in PARALLEL up to the scheduler's slots. The
+# build runs via a 1-font spec JSON (not command-line args) so a comma
+# in a variable-font path can't shift the arguments. The per-bundle
+# build and the content fingerprint cache live in
+# penstroke.houdini.build_bundle.
+launcher = os.path.join(_repo, 'scripts', 'run_build.cmd')
+specdir = os.path.join(cfg.evalParm('bundlesroot'), '.build_specs')
+os.makedirs(specdir, exist_ok=True)
 
-from penstroke import hfont
-from penstroke.houdini import rep_outline, rep_strokes
-
-
-def fingerprint(path):
-    """sha1 of a source file's bytes: a content signature that does NOT
-    move when a re-clone/copy bumps the mtime, or when a different root
-    supplies the same font. None if unreadable. This is what makes the
-    cache immune to the path/mtime that the scan happened to pick."""
-    try:
-        h = hashlib.sha1()
-        with open(path, 'rb') as f:
-            for chunk in iter(lambda: f.read(1 << 20), b''):
-                h.update(chunk)
-        return h.hexdigest()
-    except OSError:
-        return None
-
-
-def fp_file(rep):
-    return os.path.join(bundle, 'reps', rep, '.src.sha1')
-
-
-def write_fp(rep, src_fp):
-    if src_fp is None:
-        return
-    try:
-        os.makedirs(os.path.dirname(fp_file(rep)), exist_ok=True)
-        with open(fp_file(rep), 'w') as f:
-            f.write(src_fp)
-    except OSError:
-        pass
-
-
-def rep_current(rep, geo_path, src_path, src_fp):
-    """A rep is up to date if its geo exists and the source CONTENT
-    matches the fingerprint recorded when it was last built. First
-    encounter (no fingerprint yet): an existing, mtime-current geo is
-    ADOPTED -- its fingerprint is written without a rebuild -- so adding
-    this cache never forces one full re-cook of already-built bundles."""
-    if src_fp is None or not os.path.exists(geo_path):
-        return False
-    fpp = fp_file(rep)
-    if os.path.exists(fpp):
-        try:
-            with open(fpp) as f:
-                return f.read().strip() == src_fp
-        except OSError:
-            return False
-    if os.path.exists(src_path) and \\
-            os.path.getmtime(geo_path) >= os.path.getmtime(src_path):
-        write_fp(rep, src_fp)
-        return True
-    return False
-
-
-fp_ttf = fingerprint(ttf)
-fp_store = fingerprint(store) if os.path.exists(store) else None
-
-need_outline = True
-need_strokes = os.path.exists(store)
-# reduced-curve sibling of strokes, gated by the HDA toggle
-need_bezier = os.path.exists(store) and bool(work_item.attribValue(
-    'build_bezier'))
-if not need_strokes:
-    print('WARNING: no stroke store for',
-          work_item.attribValue('family'),
-          '- trace failed or skipped; building outline-only bundle')
-if os.path.exists(os.path.join(bundle, hfont.MANIFEST_NAME)):
-    try:
-        hf = hfont.HFont(bundle)
-        reps = hf.manifest['reps']
-        if 'outline' in reps and rep_current(
-                'outline', hf.rep_geo_path('outline'), ttf, fp_ttf):
-            need_outline = False
-        if need_strokes and 'strokes' in reps and rep_current(
-                'strokes', hf.rep_geo_path('strokes'), store, fp_store):
-            need_strokes = False
-        if need_bezier and 'strokes_bezier' in reps and rep_current(
-                'strokes_bezier', hf.rep_geo_path('strokes_bezier'),
-                store, fp_store):
-            need_bezier = False
-    except Exception:
-        pass
-
-# Failures must not abort the batch: report loudly, leave the bundle
-# absent/partial (visible in the index), let the other fonts cook.
-try:
-    if need_outline:
-        rep_outline.build_outline_rep(ttf, bundle, charset=charset,
-                                      verbose=False, category=category)
-        write_fp('outline', fp_ttf)
-    if need_strokes:
-        rep_strokes.build_strokes_rep(store, bundle, verbose=False)
-        write_fp('strokes', fp_store)
-    if need_bezier:
-        rep_strokes.build_strokes_bezier_rep(store, bundle, verbose=False)
-        write_fp('strokes_bezier', fp_store)
-    # Tag category even when reps were cached (so the type filter works
-    # without a full rebuild).
-    hfont.set_category(bundle, category)
-    built = [r for r, n in (('outline', need_outline),
-                            ('strokes', need_strokes),
-                            ('bezier', need_bezier)) if n]
-    print('bundle ok:', os.path.basename(bundle),
-          ('rebuilt ' + ','.join(built)) if built else 'all cached')
-except Exception:
-    import traceback
-    print('BUNDLE FAILED:', work_item.attribValue('family'))
-    traceback.print_exc()
+for it in upstream_items:
+    spec = [{
+        'ttf': it.stringAttribValue('ttf'),
+        'bundle': it.stringAttribValue('bundle'),
+        'store': it.stringAttribValue('store'),
+        'charset': it.stringAttribValue('charset'),
+        'category': it.stringAttribValue('category') or None,
+        'build_bezier': bool(it.intAttribValue('build_bezier')),
+    }]
+    # content-hashed spec name (no counters in filenames), deterministic
+    # so a re-cook reuses the same file.
+    key = hashlib.sha1(spec[0]['bundle'].encode('utf-8')).hexdigest()[:10]
+    specpath = os.path.join(specdir, 'spec-' + key + '.json')
+    with open(specpath, 'w', encoding='utf-8') as f:
+        json.dump(spec, f)
+    w = item_holder.addWorkItem(parent=it)
+    w.setStringAttrib('font_spec', specpath)
+    w.setCommand('"%s" "%s"' % (launcher, specpath))
 '''
 
 INDEX_CODE = CFG_FINDER + '''
@@ -532,17 +444,14 @@ def build_graph(parent_path='/obj', parms_on=None):
     sync.parm('pdg_workitemgeneration').set('0')
     sync.parm('generate').set(SYNC_CODE)
 
-    build = topnet.createNode('pythonscript', 'build_bundle')
+    build = topnet.createNode('pythonprocessor', 'build_bundle')
     build.setInput(0, sync)
-    # In-process: a pythonscript TOP is ONE scheduler task regardless of
-    # the inprocess toggle, so out-of-process gained nothing (still
-    # serial, just off-thread and slower from worker startup) and the
-    # task bar still froze. In-process is the fastest of the two. A
-    # moving per-font counter + real parallelism needs a COMMAND-based
-    # stage (one task per font, like trace_missing) — see build-bundles.
-    build.parm('inprocess').set(True)
-    build.parm('pdg_workitemgeneration').set('0')   # from cooked items
-    build.parm('script').set(BUILD_CODE)
+    # Command-based, one task per font: the task bar advances per font
+    # and fonts build in PARALLEL up to the scheduler's slots. Generate
+    # from each cooked upstream item, so a font only builds once its
+    # trace has finished (strokes.json present).
+    build.parm('pdg_workitemgeneration').set('0')   # each upstream cooked
+    build.parm('generate').set(BUILD_GEN_CODE)
 
     wait = topnet.createNode('waitforall', 'wait_all')
     wait.setInput(0, build)

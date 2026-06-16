@@ -47,7 +47,10 @@ import json
 import os
 import sys
 
-from penstroke.pipeline import trace_font, safe_filename
+# NB: penstroke.pipeline (and the tracer it pulls in) needs networkx /
+# scipy / skimage, which live in the venv but NOT in hython. Import it
+# lazily inside the commands that trace, so the light commands
+# (build-bundles, refresh-previews) stay importable under hython.
 
 
 def _find_source_font(output_dir):
@@ -137,9 +140,22 @@ def main(argv=None):
                        help='Directories searched recursively for trace '
                             'output folders.')
 
+    p_bb = sub.add_parser('build-bundles',
+                          help='Build the .hfont bundles listed in chunk '
+                               'spec JSON files. Runs under hython (the rep '
+                               'builders need hou); the penstroke::tops '
+                               'build_bundle stage calls it, one command '
+                               'per chunk, so the build fans out across '
+                               'cores with a live task count.')
+    p_bb.add_argument('specs', nargs='+',
+                      help='Chunk spec JSON files; each a list of font '
+                           'dicts (ttf, bundle, store, charset, category, '
+                           'build_bezier).')
+
     args = parser.parse_args(argv)
 
     if args.command == 'trace':
+        from penstroke.pipeline import trace_font
         kwargs = {
             'font_name': args.name,
             'size': args.size,
@@ -155,6 +171,7 @@ def main(argv=None):
     elif args.command == 'export-corel':
         from penstroke import handshake
         from penstroke.editround import write_edit_csv, load_stroke_store
+        from penstroke.pipeline import safe_filename
         meta = _load_metadata(args.output_dir)
         ttf = _find_source_font(args.output_dir)
         if args.selection:
@@ -191,6 +208,7 @@ def main(argv=None):
         from penstroke import handshake
         from penstroke.editround import (import_edit_csv, write_edit_csv,
                                          load_stroke_store)
+        from penstroke.pipeline import safe_filename
 
         inbox = args.inbox or os.environ.get('PENSTROKE_SELECTIONS')
         corel = args.corel or os.environ.get('PENSTROKE_COREL')
@@ -251,6 +269,15 @@ def main(argv=None):
                     f.write(html)
                 n += 1
         print(f'refreshed {n} preview.html files')
+
+    elif args.command == 'build-bundles':
+        # Lazy import: the rep builders need hou, so this branch only
+        # works under hython — but importing it lazily keeps the rest of
+        # the CLI usable from the plain venv.
+        from penstroke.houdini.build_bundle import build_chunk
+        fails = sum(build_chunk(spec) for spec in args.specs)
+        if fails:
+            raise SystemExit(f'{fails} bundle(s) failed')
 
 
 if __name__ == '__main__':
