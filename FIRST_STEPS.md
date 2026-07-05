@@ -1,23 +1,13 @@
-# First steps after importing this package
+# First steps
 
-This document captures the one-time setup when you've just unzipped
-the package and want to start working with it in Claude Code (or
-any normal dev environment).
+One-time setup for a fresh clone. Full usage documentation lives in
+[docs/user_guide.md](docs/user_guide.md).
 
-## 1. Set up the repo
-
-```bash
-cd penstroke
-git init
-git add -A
-git commit -m "Initial import from sandbox"
-```
-
-## 2. Install
+## 1. Install
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev,ocr]"
 ```
 
@@ -27,67 +17,51 @@ needs to be installed separately:
 
 - macOS: `brew install tesseract`
 - Linux: `sudo apt install tesseract-ocr`
+- Windows: the UB Mannheim installer, then add it to PATH
 
 Skip those if you don't want OCR validation — the pipeline runs fine
-without it; the OCR metric just gets skipped.
+without it; the OCR metric is skipped and `metadata.json` records
+that it didn't run (`qa.ocr_ran`).
 
-## 3. Smoke test
+Note for the Houdini side: the PDG job launchers expect the venv at
+`<repo>/.venv` exactly.
 
-```bash
-make test
-# or:
-python tests/test_smoke.py
-```
-
-Expect 5 ✓ lines and "All smoke tests passed."
-
-## 4. First trace
+## 2. Test
 
 ```bash
-make trace
-# or:
-penstroke trace tests/fixtures/caveat.ttf /tmp/caveat_out/
+pytest
+# on a Windows console:
+PYTHONIOENCODING=utf-8 pytest
 ```
 
-Then open `/tmp/caveat_out/alphabet_static.svg` to see all 52 letters
-laid out as a grid, and `/tmp/caveat_out/word_demo.html` to see
-"hello world" composed from the per-letter SVGs.
+All tests should pass (26 at the time of writing) and take well under
+a minute.
 
-## 5. Open in Claude Code
+## 3. First trace
 
 ```bash
-claude .
+penstroke trace tests/fixtures/caveat.ttf output/caveat_first/
 ```
 
-The agent will read `CLAUDE.md` first and immediately know:
-- What the project does
-- Where each module lives
-- What conventions to follow
-- What the open work items are
+Open `output/caveat_first/preview.html` in a browser: the alphabet
+writes itself, with play/pause/speed/scrub/wireframe controls. For
+per-letter detail, look at `diagnostics/*.png`.
+
+## 4. Houdini (optional)
+
+```bash
+hython scripts/install_houdini_package.py
+```
+
+Restart Houdini; `penstroke::tops` and `penstroke::text_layout` appear
+in the Tab menu. Runbook: [docs/houdini_workflow.md](docs/houdini_workflow.md).
 
 ## Files worth reading first (in order)
 
-1. **README.md** — what the tool does and how to invoke it
-2. **CLAUDE.md** — module-by-module orientation, conventions, open items
-3. **CHANGELOG.md** — design history, dead ends, empirical constants
-4. **CONTRIBUTING.md** — code conventions, common workflows
-
-## What's NOT in this zip (and that's intentional)
-
-- **The 30+ generated font outputs from the original session.** Those
-  are reproducible from any TTF by running `penstroke trace` or
-  `python scripts/batch_google_fonts.py`. Carrying ~50 MB of reproducible
-  output around is wasteful.
-- **A `.git/` directory.** You should initialize git yourself so the
-  history starts clean from your end.
-- **A `.venv/`.** Build your own.
-
-## What IS in this zip
-
-- Full source code
-- Caveat TTF fixture for tests (OFL-licensed, safe to redistribute)
-- HTML viewer template with play/pause/speed/scrub/wireframe
-- Smoke tests
-- Documentation (CLAUDE.md, CHANGELOG.md, CONTRIBUTING.md, README.md)
-- Makefile with common commands
-- pyproject.toml ready for `pip install -e .`
+1. **README.md** — what the tool does and the pipeline in 7 steps
+2. **docs/user_guide.md** — every command and workflow, with gotchas
+3. **CLAUDE.md** — module-by-module orientation, conventions, open items
+4. **CHANGELOG.md** — design history, dead ends, empirical constants
+5. **CONTRIBUTING.md** — code conventions, how to fix tracing defects
+6. **design/code_concept_review.md** — current code-review findings and
+   the prioritized fix list
