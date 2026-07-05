@@ -72,19 +72,20 @@ def build_report(font_name, per_letter_results):
         else:
             major.append((ch, issues))
 
-    # Template usage summary
-    template_counts: dict[str, int] = {}
+    # Tracer usage summary ('template_used' is the historic field name;
+    # it has carried the tracer name since the Hershey stack was removed)
+    tracer_counts: dict[str, int] = {}
     for info in per_letter_results.values():
         t = info.get('template_used') or 'none'
-        template_counts[t] = template_counts.get(t, 0) + 1
+        tracer_counts[t] = tracer_counts.get(t, 0) + 1
 
     lines = [
         f"# {font_name} — Trace Report",
         "",
         f"**Letters traced:** {len(per_letter_results)}",
         "",
-        "**Templates used:** " + ", ".join(
-            f"{name} ({n})" for name, n in sorted(template_counts.items(), key=lambda kv: -kv[1])
+        "**Tracer:** " + ", ".join(
+            f"{name} ({n})" for name, n in sorted(tracer_counts.items(), key=lambda kv: -kv[1])
         ),
         "",
         "## Summary",
@@ -144,15 +145,25 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
         overall_score, _ = metrics['overall_score']
         issues = [issue for _name, (_score, issue) in metrics.items()
                   if issue is not None]
+        per_metric = {name: round(score, 3)
+                      for name, (score, _issue) in metrics.items()
+                      if name != 'overall_score'}
+        worst = min(per_metric, key=per_metric.get) if per_metric else None
         letters[ch] = {
             'file': f'glyphs/{filename_fn(ch)}',
             'template_used': info.get('template_used'),
             'stroke_count': info.get('stroke_count', 0),
             'advance_px': info.get('advance_px'),
             'quality_score': round(overall_score, 3),
+            # quality_score = min over metrics; expose the components so
+            # consumers can filter by a SPECIFIC metric instead of
+            # parsing English issue strings.
+            'metric_scores': per_metric,
+            'worst_metric': worst,
             'issues': issues,
         }
 
+    from penstroke.quality.ocr import ocr_available
     data = {
         'font_name': font_name,
         'font_file': font_file,
@@ -160,6 +171,10 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
         'units_per_em': upem,
         'canvas_dims': list(canvas_dims),
         'baseline_y': baseline_y,
+        # Whether the OCR metric could run on this machine: without
+        # this flag, a font traced where tesseract is missing looks
+        # cleaner than the same font traced where it is installed.
+        'qa': {'ocr_ran': bool(ocr_available())},
         'letters': letters,
     }
     if trace_params:

@@ -4,14 +4,25 @@ Renders the traced glyph back to a raster and runs OCR on it, comparing
 against the original character. Catches semantic failures (the trace
 "looks like" a different letter) that pixel-based coverage misses.
 
-The metric is `ocr_recognizable`. It returns:
-    score 1.0 if traced glyph OCRs as the correct character
-    score 0.7 if it OCRs as the correct character but different case
-    score 0.3 if it OCRs as the wrong character but original font also fails
-    score 0.0 if it OCRs as the wrong character (original would have been ok)
+The metric is DIFFERENTIAL: it only carries signal about the trace when
+the ORIGINAL font OCRs correctly — otherwise a failure says something
+about the font (or about tesseract), not about the trace. Characters
+outside tesseract's letters+digits whitelist (punctuation, accented
+Latin-1) can never be recognized and are skipped entirely; scoring them
+used to mark every punctuation glyph "significant issues" on machines
+with tesseract installed and clean on machines without — a report that
+was both wrong and non-reproducible.
 
-Requires `pytesseract` and the `tesseract` binary on PATH. Falls back to
-returning None if not available — OCR is a "nice to have", not required.
+`ocr_recognizable` returns (score, issue) with:
+    1.0  traced glyph OCRs as the correct character (or a confusable)
+    0.7  OCRs correct but wrong case (R→r)
+    0.0  traced OCRs wrong while the original reads correctly — the
+         only true-failure case, and the one worth reporting
+    (None, None) when the metric is not applicable: OCR unavailable,
+         char outside the whitelist, or the original font itself does
+         not OCR as this char (no baseline, no signal).
+
+Requires `pytesseract` and the `tesseract` binary on PATH.
 """
 
 import io
@@ -24,6 +35,15 @@ from penstroke.core.smoothing import taper_profile
 
 _OCR_AVAILABLE = None
 _pytesseract = None
+
+
+def ocr_available():
+    """Is the OCR metric runnable (pytesseract + tesseract binary)?
+
+    Recorded in metadata.json so two machines' reports are comparable —
+    a font must not look cleaner just because tesseract was missing.
+    """
+    return _check_ocr()
 
 
 def _check_ocr():
@@ -93,31 +113,38 @@ _CONFUSABLE = {
 def ocr_recognizable(char, mask, traced):
     """Score how well OCR recognizes the traced glyph as `char`.
 
-    Returns (score, issue_or_none). Score interpretation:
-        1.0  → traced OCRs as the correct character (or visually confusable one)
-        0.7  → traced OCRs correct, but case differs (R→r or r→R)
-        0.5  → traced fails OCR but the ORIGINAL font would also fail
-        0.0  → traced OCRs as the wrong character
-
-    Returns (None, None) if OCR isn't available — callers should handle
-    that as "metric not run".
+    Differential metric — see the module docstring. Returns
+    (score, issue_or_none), or (None, None) when not applicable
+    (OCR unavailable, char not OCR-able, or no baseline: the original
+    font itself doesn't read as `char`).
     """
     if not _check_ocr():
+        return None, None
+    # Outside tesseract's whitelist the "correct" answer is impossible
+    # by construction — the metric carries no information.
+    if not (char in string.ascii_letters or char in string.digits):
         return None, None
     if not traced:
         return 0.0, "no strokes to OCR"
 
-    traced_img = _render_to_image(traced, mask.shape)
-    pred, conf = _ocr_char(traced_img)
+    confusables = _CONFUSABLE.get(char, char)
 
+    # Baseline first: if the ORIGINAL font doesn't OCR as this char,
+    # a trace failure says nothing about the trace.
     orig_img = Image.fromarray((255 - mask * 255).astype(np.uint8))
     pad = 20
     padded_orig = Image.new('L', (orig_img.width + 2*pad, orig_img.height + 2*pad), 255)
     padded_orig.paste(orig_img, (pad, pad))
-    orig_pred, orig_conf = _ocr_char(padded_orig)
+    orig_pred, _orig_conf = _ocr_char(padded_orig)
+    orig_ok = (char in orig_pred
+               or any(c in orig_pred for c in confusables)
+               or char.lower() in orig_pred.lower())
+    if not orig_ok:
+        return None, None
 
+    traced_img = _render_to_image(traced, mask.shape)
+    pred, _conf = _ocr_char(traced_img)
     pred_clean = pred.strip()
-    confusables = _CONFUSABLE.get(char, char)
 
     # Direct hit
     if char in pred_clean:
@@ -128,11 +155,4 @@ def ocr_recognizable(char, mask, traced):
     # Case-insensitive hit
     if char.lower() in pred_clean.lower():
         return 0.7, f"OCR returned {pred_clean!r} (case ambiguous)"
-    # Both fail
-    if not pred_clean and not orig_pred.strip():
-        return 0.5, "OCR fails on both traced and original (font hard to OCR)"
-    # Original also doesn't OCR cleanly
-    if char not in orig_pred and char.lower() not in orig_pred.lower():
-        if not any(c in orig_pred for c in confusables):
-            return 0.5, f"OCR mismatch ({pred_clean!r}), but original font also fails ({orig_pred!r})"
     return 0.0, f"OCR sees {pred_clean!r} instead of {char!r} (original reads correctly)"

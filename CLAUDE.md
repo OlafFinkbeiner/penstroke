@@ -35,9 +35,9 @@ src/penstroke/
 │   │                      parallel-edge collapse (with length-ratio guard)
 │   ├── outline.py         TTF Bézier outlines → polygons in canvas coords
 │   │                      (crisp underlay + outline-coverage QA)
-│   ├── strokes.py         template-free geometric stroke decomposition
-│   │                      (fallback for non-Latin scripts) + tangent_at +
-│   │                      trace_closed_loops helpers
+│   ├── strokes.py         trace_closed_loops (pure-cycle components that
+│   │                      produce no graph nodes; the tracer's orphan-
+│   │                      loop pass)
 │   └── smoothing.py       spline fit, per-point widths, OU-process wobble, taper
 │
 ├── tracer.py              THE tracer — junction-first graph decomposition.

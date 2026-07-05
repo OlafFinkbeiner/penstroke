@@ -389,16 +389,32 @@ preview the SVG's pacing).
    present (fixes prefix-family multi-delivery for our own exports);
    free-form Corel names without a sidecar remain token-matched — the
    residual B6 ambiguity, acceptable.
-8. ◐ C1 done / C2 open (2026-07-05) — `penstroke qa <output_dir>` runs the
-   cascade against the STROKE STORE (judges the current decomposition incl.
-   Corel edits; no re-trace), writes qa.json + an idempotent `## Cascade
-   QA` report.md section. Bonus fix: the geometric layer's tortuosity
-   check now exempts closed strokes (every o/0/8 used to fire as
-   "zigzag"). Still open (C2): demote/fix the OCR metric, per-metric
-   scores in metadata.json; and the outline-coverage layer looks
-   over-eager on loop glyphs — calibrate before trusting it solo.
-9. A5/A6 — parallel-collapse and junction-merge geometry fixes.
-10. D7 — delete the dead strokes.py decomposition stack + dead annotations.
+8. ✅ C1+C2 (2026-07-05) — `penstroke qa <output_dir>` runs the cascade
+   against the STROKE STORE (judges the current decomposition incl. Corel
+   edits; no re-trace), writes qa.json + an idempotent `## Cascade QA`
+   report.md section; the geometric layer's tortuosity check exempts
+   closed strokes (every o/0/8 used to fire as "zigzag"). The OCR metric
+   is now DIFFERENTIAL: skips chars outside tesseract's whitelist and
+   glyphs the original font itself doesn't OCR (no baseline → no signal
+   → None, not 0.5+issue); metadata.json records qa.ocr_ran plus
+   per-letter metric_scores and worst_metric; report header says
+   "Tracer", not "Templates used". Remaining calibration note: the
+   cascade's outline-coverage layer looks over-eager on loop glyphs —
+   treat its solo fires as noise until calibrated.
+9. ✅ A5/A6 (2026-07-05) — collapse_parallel_edges keeps the ORIGINAL
+   pixel path for edges it does not merge (resampling was reserved for
+   comparison/averaging); junction-merge splices stay bare (duplicates
+   are matched by pixel-set equality, so both copies need identical
+   splices) and a new fill_path_gaps hygiene pass bridges the jumps
+   AFTER duplicate removal. Full-charset sweep vs baseline: 0 stroke-
+   count changes, sub-1% arc-length shifts on 37/188 glyphs — pure
+   geometric refinement. (First attempt bridged inside the merge and
+   broke pixel-set dedup — arclens doubled; the sweep caught it.)
+10. ✅ D7 (2026-07-05) — deleted decompose_strokes/build_strokes/
+    order_strokes/tangent_at (strokes.py), build_skel_pixel_graph
+    (graph.py), and the write-only tan_u/tan_v/retrace edge annotations
+    (tracer.py); CLAUDE.md updated. Sweep confirms byte-identical
+    behavior.
 
 **The concept bets (when quality work resumes):**
 11. D2 — width-continuity term in junction pairing (targets the documented

@@ -373,10 +373,13 @@ Houdini package file sets these up for cooked graphs.
 - **Don't re-save the exchange CSV from Excel** — it will mangle the format
   (the sync detects this, quarantines the file, and tells you; but the edit
   itself is lost). Only the Corel macros should write it.
-- **Punctuation in `report.md`** can be flagged as "significant issues"
-  purely because the OCR metric can't read punctuation; check the diagnostic
-  image before believing it. `penstroke qa` gives a more discriminating
-  second opinion.
+- **The OCR metric is differential and optional.** It only judges glyphs
+  the original font itself OCRs correctly (letters/digits), so it can't
+  punish punctuation or hard-to-OCR script fonts. `metadata.json` records
+  whether it ran (`qa.ocr_ran`) so reports from machines with and without
+  tesseract stay comparable. Per-metric scores live in each letter's
+  `metric_scores`, with `worst_metric` naming what drove the headline
+  score. `penstroke qa` gives a deeper second opinion.
 - **Windows encodings**: the codebase writes UTF-8 everywhere; when running
   the test scripts in a console, `PYTHONIOENCODING=utf-8` avoids cp1252
   crashes on the ✓ output.

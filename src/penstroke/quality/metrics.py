@@ -77,7 +77,7 @@ def coverage(mask, traced):
 
 def stroke_count_matches_template(traced, expected_count):
     """1.0 if the actual stroke count matches what the template specified,
-    0.5 if off by one, 0.0 if more divergent."""
+    0.7 if off by one, 0.3 if more divergent."""
     if expected_count is None:
         return 1.0, None  # no template = no expectation
     actual = len(traced)

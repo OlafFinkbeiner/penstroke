@@ -43,8 +43,9 @@ from penstroke.core.rasterize import rasterize_glyph
 from penstroke.core.skeleton import skeletonize
 from penstroke.core.graph import (
     skeleton_to_graph, merge_nearby_junctions, collapse_parallel_edges,
+    fill_path_gaps,
 )
-from penstroke.core.strokes import tangent_at, trace_closed_loops
+from penstroke.core.strokes import trace_closed_loops
 from penstroke.core.smoothing import smooth_and_wobble
 
 
@@ -314,10 +315,8 @@ def build_annotated_graph(skel, dist_map, mask=None):
     Each edge d carries:
       - d['path']: ordered list of (y, x) pixel coords along the edge
       - d['length']: arc length in pixels
-      - d['tan_u'], d['tan_v']: unit tangents at endpoints u and v,
-        each pointing AWAY from its endpoint (into the edge)
-      - d['retrace']: False initially; set True by T-join repair if this
-        edge was duplicated to fix parity
+    (End tangents are computed where they are consumed —
+    analyze_junctions/_edge_ends_at — not cached on the edge.)
 
     Hygiene applied before annotation (each targets a real observed
     defect class):
@@ -356,6 +355,14 @@ def build_annotated_graph(skel, dist_map, mask=None):
     for (u, v, k) in to_drop:
         G.remove_edge(u, v, key=k)
 
+    # --- Hygiene pass 2b: repair pixel-continuity ---------------------
+    # Junction merging splices rep coordinates onto rewired paths as a
+    # bare jump (it must — duplicates are matched by pixel-set equality
+    # above, so both copies need identical splices). Now that dupes are
+    # gone, bridge those jumps so paths are true pixel chains again:
+    # tangent windows and resampling read them correctly.
+    fill_path_gaps(G)
+
     # --- Hygiene pass 3: prune redundant leaf branches ---------------
     # Skipped on texture-dense skeletons (see PRUNE_MAX_EDGES): the prune
     # is O(leaves x window) and would cost 10s+ on a glyph with hundreds
@@ -365,11 +372,7 @@ def build_annotated_graph(skel, dist_map, mask=None):
 
     G = collapse_parallel_edges(G, dist_map)
     for u, v, k, d in list(G.edges(keys=True, data=True)):
-        path = d['path']
-        d['length'] = _path_arc_length(path)
-        d['tan_u'] = tangent_at(path, u, k=20)
-        d['tan_v'] = tangent_at(path, v, k=20)
-        d['retrace'] = False
+        d['length'] = _path_arc_length(d['path'])
     return G
 
 
@@ -455,9 +458,8 @@ def split_components(G, skel):
 #      partitions ALL edges into chains — each chain is one natural
 #      stroke. No walk-order dependence, no consumed-edge corners.
 #
-# This single pass replaces the T-join + Hierholzer + sharp-turn-split
-# machinery for decomposition purposes (those remain below for
-# reference until fully retired).
+# This single pass replaced the T-join + Hierholzer + sharp-turn-split
+# machinery (removed; see git history).
 # ---------------------------------------------------------------------------
 
 MAX_CONTINUATION_TURN_DEG = 75.0   # max turn angle for two edge-ends to

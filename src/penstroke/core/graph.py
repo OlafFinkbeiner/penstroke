@@ -1,17 +1,11 @@
 """Build and clean up a graph representation of a glyph skeleton.
 
-Two graph builders here:
-
   `skeleton_to_graph` produces a high-level graph where nodes are endpoints
   and junctions (degree 1 or ≥3 in the skeleton), and edges are the smooth
-  paths between them. This is what the geometric stroke-decomposition code
-  reasons over.
+  paths between them. This is what the junction-first tracer
+  (penstroke.tracer) reasons over.
 
-  `build_skel_pixel_graph` produces a pixel-level graph (every skeleton pixel
-  is a node, edges connect 8-neighbors). This is what the template-guided
-  pipeline uses for shortest-path queries between waypoints.
-
-Two cleanup operations that the template pipeline depends on:
+Two cleanup operations the tracer depends on:
 
   `merge_nearby_junctions` collapses clusters of close-together junction
   nodes into one. The medial axis of a perpendicular crossing (like an X)
@@ -30,34 +24,6 @@ Two cleanup operations that the template pipeline depends on:
 import math
 import numpy as np
 import networkx as nx
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Pixel-level graph (used by the template-guided shortest-path tracer)
-# ─────────────────────────────────────────────────────────────────────────────
-
-def build_skel_pixel_graph(skel):
-    """Build a graph where each skeleton pixel is a node connected to its
-    8-neighbors. Edge weights are Euclidean distance (1 for cardinal,
-    sqrt(2) for diagonal), so `nx.shortest_path` returns geometrically
-    sensible routes.
-    """
-    G = nx.Graph()
-    H, W = skel.shape
-    pixels = list(map(tuple, np.argwhere(skel)))
-    for p in pixels:
-        G.add_node(p)
-    pset = set(pixels)
-    for (y, x) in pixels:
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                if dy == 0 and dx == 0:
-                    continue
-                nb = (y + dy, x + dx)
-                if nb in pset:
-                    weight = 1.0 if abs(dy) + abs(dx) == 1 else 1.414
-                    G.add_edge((y, x), nb, weight=weight)
-    return G
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -130,6 +96,48 @@ def skeleton_to_graph(skel):
 # Junction cluster merging
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _bridge_pixels(p, q):
+    """Straight chain of integer pixels from p to q, EXCLUSIVE of both."""
+    dy, dx = q[0] - p[0], q[1] - p[1]
+    n = int(max(abs(dy), abs(dx)))
+    if n <= 1:
+        return []
+    return [(int(round(p[0] + dy * t / n)), int(round(p[1] + dx * t / n)))
+            for t in range(1, n)]
+
+
+def fill_path_gaps(G, max_step=1.9):
+    """Repair pixel-continuity of every edge path in place.
+
+    Junction merging splices cluster-representative coordinates onto
+    rewired paths, leaving straight jumps of up to its merge radius as
+    a single segment. Downstream code treats paths as 8-connected
+    pixel chains — fixed-index tangent windows, the scrambled-path
+    length ratio, and resampling all mis-read a bare jump — so any
+    consecutive pair further apart than one pixel step gets a straight
+    bridge of interpolated pixels inserted.
+
+    Must run AFTER duplicate-edge removal: duplicates are matched by
+    pixel-set equality, and bridging would make the scrambled copy's
+    set diverge from its clean twin (their first/last pixels differ),
+    letting the duplicate survive into tracing.
+    """
+    for _u, _v, _k, d in G.edges(keys=True, data=True):
+        path = d['path']
+        if len(path) < 2:
+            continue
+        out = [path[0]]
+        changed = False
+        for prev, cur in zip(path, path[1:]):
+            if math.hypot(cur[0] - prev[0], cur[1] - prev[1]) > max_step:
+                out.extend(_bridge_pixels(prev, cur))
+                changed = True
+            out.append(cur)
+        if changed:
+            d['path'] = out
+    return G
+
+
 def merge_nearby_junctions(G, max_dist=22):
     """Collapse clusters of junction nodes that are close together.
 
@@ -200,6 +208,14 @@ def merge_nearby_junctions(G, max_dist=22):
             v2 = node_to_rep.get(v, v)
             path = list(data['path'])
 
+            # NB: the splice adds ONLY the rep coordinate — no bridge
+            # pixels. Duplicate edges (skeleton_to_graph emits some
+            # twice, one scrambled) are detected later by PIXEL-SET
+            # equality, and both duplicates must receive identical
+            # splices or the sets diverge and the duplicate survives
+            # (= every such edge traced twice). The resulting up-to-
+            # max_dist jump is repaired by fill_path_gaps AFTER
+            # duplicate removal.
             if u2 == v2:
                 # Self-loop after merging. Real closed loops (bowl of 'a',
                 # 'p', 'q') become self-loops on the merged junction and we
@@ -265,36 +281,49 @@ def collapse_parallel_edges(G, dist_map=None):
             continue
 
         # Normalize all parallel paths to point from a→b for comparison.
+        # Keep the ORIGINAL pixel chain alongside the resampled copy:
+        # the resampled version exists only to compare/average — edges
+        # that end up NOT merged must keep their exact pixel path.
+        # (Emitting the resampled copy for them loses geometry — a
+        # 200px arc grouped with a 10px chord got mean-resampled to
+        # ~2px spacing — and silently widens the tracer's fixed-index
+        # tangent windows, changing junction decisions for exactly the
+        # hook shapes the length-ratio guard protects.)
         paths_ab = []
         for u, v, k, data in edges_list:
             p = list(data['path'])
             if tuple(p[0]) != a:
                 p = p[::-1]
-            paths_ab.append(np.array(p, dtype=float))
+            paths_ab.append(p)
 
         n_samples = max(int(np.mean([len(p) for p in paths_ab])), 20)
+        originals = []      # exact pixel chains, a→b oriented
         resampled = []
         path_lens = []
         for p in paths_ab:
-            if len(p) < 2:
+            arr = np.array(p, dtype=float)
+            if len(arr) < 2:
+                H.add_edge(a, b, path=p)   # degenerate: keep verbatim
                 continue
-            d = np.cumsum(np.r_[0, np.hypot(np.diff(p[:, 0]), np.diff(p[:, 1]))])
+            d = np.cumsum(np.r_[0, np.hypot(np.diff(arr[:, 0]),
+                                            np.diff(arr[:, 1]))])
             if d[-1] == 0:
+                H.add_edge(a, b, path=p)   # zero-length: keep verbatim
                 continue
             tt = np.linspace(0, d[-1], n_samples)
-            y = np.interp(tt, d, p[:, 0])
-            x = np.interp(tt, d, p[:, 1])
+            y = np.interp(tt, d, arr[:, 0])
+            x = np.interp(tt, d, arr[:, 1])
+            originals.append(p)
             resampled.append(np.column_stack([y, x]))
             path_lens.append(d[-1])
         if len(resampled) < 2:
-            for u, v, k, data in edges_list:
-                H.add_edge(u, v, path=data['path'])
+            for p in originals:
+                H.add_edge(a, b, path=p)
             continue
 
         # Greedy grouping: for each path, check it against later paths in the
         # list and merge any that pass ALL THREE tests.
         used = set()
-        out_paths = []
         for i in range(len(resampled)):
             if i in used:
                 continue
@@ -342,15 +371,13 @@ def collapse_parallel_edges(G, dist_map=None):
                     used.add(j)
             used.add(i)
             if len(group) == 1:
-                out_paths.append(resampled[i])
+                # Not merged: the edge keeps its exact pixel path.
+                H.add_edge(a, b, path=originals[i])
             else:
-                # Average the medial split into one centerline
+                # Average the medial split into one centerline.
                 avg = np.mean([resampled[g] for g in group], axis=0)
-                out_paths.append(avg)
-
-        for avg in out_paths:
-            avg_path = [(int(round(y)), int(round(x))) for y, x in avg]
-            avg_path[0] = a
-            avg_path[-1] = b
-            H.add_edge(a, b, path=avg_path)
+                avg_path = [(int(round(y)), int(round(x))) for y, x in avg]
+                avg_path[0] = a
+                avg_path[-1] = b
+                H.add_edge(a, b, path=avg_path)
     return H
