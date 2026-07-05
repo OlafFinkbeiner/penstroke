@@ -96,12 +96,24 @@ design/                    Active design docs
 ├── qa_cleanup_spec.json   QA/cleanup architecture (multi-lens synthesis)
 ├── epst_batch_qa_v2.json  Current 6-font QA: issue classes + verdicts
 ├── cascade_results_v2.json Deterministic detector findings + calibration notes
-└── animation_handoff.md   What's available for animating the output:
-                           stroke attributes (u/width/arclength/
-                           stroke_index) + layout attrs (idx/word/line/
-                           charinword), how the draw-on works today
+├── animation_handoff.md   What's available for animating the output:
+│                          stroke attributes (u/width/arclength/
+│                          stroke_index) + layout attrs (idx/word/line/
+│                          charinword), how the draw-on works today
+├── code_concept_review.md Full code+concept review (2026-07) with the
+│                          action list — items 1-10 done; concept bets
+│                          remain
+└── tracer_quality_plan.md Implementation specs for the remaining
+                           concept bets (width-continuity pairing,
+                           width sampling, vector reprojection, store
+                           key migration) + post-re-trace checklist
 
-scripts/batch_google_fonts.py   Batch runner (edit FONTS list at top)
+scripts/batch_google_fonts.py   Small fixed demo batch (edit FONTS list)
+scripts/batch_handwriting.py    Batch runner: every HANDWRITING family
+                                from a google/fonts checkout, resumable
+scripts/trace_sweep.py          Tracer regression sweep: trace a charset,
+                                dump counts/arclens, --compare two sweeps.
+                                RUN THIS before/after ANY tracer change.
 scripts/build_tops_graph.py     Builds penstroke_tops.hip; --make-hda
                                 packages it as the penstroke::tops HDA
 scripts/build_text_layout_hda.py Builds penstroke::text_layout HDA
@@ -129,10 +141,19 @@ Key outputs: `preview.html` (interactive viewer), `diagnostics/*.png`
 ### Run tests
 
 ```bash
-python tests/test_smoke.py
+pytest
 ```
 
 On Windows, prefix with `PYTHONIOENCODING=utf-8` (the tests print ✓).
+
+### Change the tracer (regression protocol)
+
+Any change to tracer.py or core/ follows the sweep protocol in
+design/tracer_quality_plan.md: `scripts/trace_sweep.py` before/after
+(baseline via git worktree), `--compare`, zero unexplained stroke-count
+changes, visual diagnostics check, `pytest`. This caught a real
+regression (arclen doubling from a dedup interaction) during the A5/A6
+fixes — do not skip it.
 
 ### Judge trace quality (the workflow that matters)
 
@@ -229,13 +250,21 @@ fix the mechanism. Where to look:
 
 ## Open work items
 
-1. **Re-run the 6-font agent QA sweep** post-junction-first to
-   quantify the improvement (pre-rewrite baseline: ~60% clean letters,
-   issue catalog in design/epst_batch_qa.json).
-2. **Residual issue classes from that catalog**: over_split on heavy
-   serif fonts (short serif stubs as separate mini-strokes — consider
-   width-scaled spur handling), occasional stray on extreme cursive
-   terminals (an on-ink clip pass would be a cheap safety net).
+0. **Post-re-trace verification** (a full-library re-trace ran
+   2026-07-05 after the review-batch tracer fixes — '8'-class
+   double-trace, A5/A6 geometry): follow the checklist at the end of
+   design/tracer_quality_plan.md. Old traces parked in
+   `output/handwriting_pre_retrace/`; wanted Corel edits re-apply by
+   deleting their `corel/*.csv.imported.json` markers and cooking.
+1. **Re-run the 6-font agent QA sweep** to quantify the improvement
+   (pre-junction-first baseline: ~60% clean letters, issue catalog in
+   design/epst_batch_qa.json). Also produces the over_split numbers
+   that calibrate P1 below.
+2. **Residual issue classes**: over_split on heavy serif fonts and the
+   width-underestimate in tight curves now have implementation specs —
+   design/tracer_quality_plan.md P1 (width-continuity junction
+   pairing) and P2 (widths along the pixel walk). Follow the sweep
+   protocol there for any tracer change.
 3. **Houdini integration: phase 4 remainder.** Phases 1-3 of
    design/hfont_houdini_plan.md are done (hfont standard, layout
    engine + text_layout HDA, strokes rep, handwriting demo), and the
