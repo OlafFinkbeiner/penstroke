@@ -424,9 +424,15 @@ def split_components(G, skel):
             bbox=(min(ys), min(xs), max(ys), max(xs)),
             total_length=total,
         ))
-    # Orphan loops: pure cycles that the graph builder couldn't represent
-    # because they have no nodes (the 'o' has no endpoints or junctions).
-    orphans = trace_closed_loops(skel)
+    # Orphan loops: skeleton components whose pixels the graph does NOT
+    # carry — pure cycles with no nodes ('o'), plus loops whose edge was
+    # dropped during graph hygiene. Components the graph covers are
+    # decomposed above; walking them again would trace them twice
+    # (the '8' has junctions but no endpoints).
+    covered = set()
+    for _u, _v, d in G.edges(data=True):
+        covered.update(map(tuple, d['path']))
+    orphans = trace_closed_loops(skel, covered=covered)
     return components, orphans
 
 

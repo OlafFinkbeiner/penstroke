@@ -47,9 +47,28 @@ BEZIER_REP_NAME = 'strokes_bezier'
 BEZIER_REP_KIND = 'centerline_bezier'
 BEZIER_GEO_RELPATH = os.path.join('reps', BEZIER_REP_NAME, 'glyphs.bgeo.sc')
 
-# trace_font defaults (pipeline size=384, rasterize_glyph pad=40).
+# Legacy fallbacks for traces older than the metadata.json 'trace'
+# block (historic trace_font defaults: size=384, rasterize pad=40).
 DEFAULT_TRACE_SIZE = 384
 DEFAULT_TRACE_PAD = 40
+
+
+def trace_params_for_store(store_path):
+    """Trace-time (size, pad) for a stroke store.
+
+    The store's coordinates live in the trace canvas; the authoritative
+    record is the 'trace' block in the metadata.json next to the store.
+    Falls back to the historic defaults for older traces.
+    """
+    meta_path = os.path.join(os.path.dirname(os.path.abspath(store_path)),
+                             'metadata.json')
+    try:
+        with open(meta_path, encoding='utf-8') as f:
+            t = json.load(f).get('trace', {})
+        return (int(t.get('size', DEFAULT_TRACE_SIZE)),
+                int(t.get('pad', DEFAULT_TRACE_PAD)))
+    except (OSError, ValueError):
+        return DEFAULT_TRACE_SIZE, DEFAULT_TRACE_PAD
 
 
 def canvas_to_em_transform(ttf_path, size, pad):
@@ -223,8 +242,8 @@ def build_glyph_geometry_bezier(strokes, to_em, w_scale, bez=None):
     return geo, qa_polys
 
 
-def build_strokes_bezier_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
-                             pad=DEFAULT_TRACE_PAD, verbose=True):
+def build_strokes_bezier_rep(store_path, bundle_dir, size=None,
+                             pad=None, verbose=True):
     """Build the reduced bezier strokes rep into an existing bundle.
 
     Same stroke store as build_strokes_rep, fitted to cubic Beziers
@@ -237,6 +256,10 @@ def build_strokes_bezier_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
     if not os.path.exists(bundle_font):
         raise hfont.HFontError(
             f'{bundle_dir}: no {hfont.FONT_NAME} — create the bundle first')
+
+    meta_size, meta_pad = trace_params_for_store(store_path)
+    size = meta_size if size is None else size
+    pad = meta_pad if pad is None else pad
 
     store = load_store(store_path)
     store_bez = load_store_bez(store_path)   # exact hand-edited cubics
@@ -293,8 +316,8 @@ def build_strokes_bezier_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
     return len(built), geo_path
 
 
-def build_strokes_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
-                      pad=DEFAULT_TRACE_PAD, verbose=True):
+def build_strokes_rep(store_path, bundle_dir, size=None,
+                      pad=None, verbose=True):
     """Build the strokes rep into an existing bundle (font.ttf present)."""
     import hou
     from fontTools.ttLib import TTFont
@@ -304,6 +327,10 @@ def build_strokes_rep(store_path, bundle_dir, size=DEFAULT_TRACE_SIZE,
         raise hfont.HFontError(
             f'{bundle_dir}: no {hfont.FONT_NAME} — create the bundle first '
             '(rep_outline does, or hfont.create_bundle)')
+
+    meta_size, meta_pad = trace_params_for_store(store_path)
+    size = meta_size if size is None else size
+    pad = meta_pad if pad is None else pad
 
     store = load_store(store_path)
     to_em, w_scale = canvas_to_em_transform(bundle_font, size, pad)
@@ -379,10 +406,13 @@ def main(argv=None):
         description='Build the strokes rep of an hfont bundle (hython).')
     ap.add_argument('store', help='strokes.json (stroke store).')
     ap.add_argument('bundle', help='Existing bundle directory.')
-    ap.add_argument('--size', type=int, default=DEFAULT_TRACE_SIZE,
-                    help='Trace rasterization size in px (default 384).')
-    ap.add_argument('--pad', type=int, default=DEFAULT_TRACE_PAD,
-                    help='Trace canvas pad in px (default 40).')
+    ap.add_argument('--size', type=int, default=None,
+                    help='Trace rasterization size in px (default: read '
+                         "from the trace's metadata.json next to the "
+                         'store).')
+    ap.add_argument('--pad', type=int, default=None,
+                    help='Trace canvas pad in px (default: read from '
+                         "the trace's metadata.json next to the store).")
     ap.add_argument('--no-bezier', action='store_true',
                     help='Skip the reduced strokes_bezier sibling rep.')
     ap.add_argument('--quiet', action='store_true')

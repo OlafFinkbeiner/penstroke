@@ -120,7 +120,7 @@ def build_report(font_name, per_letter_results):
 
 def build_metadata_json(font_name, font_file, license_id, per_letter_results,
                        canvas_dims, baseline_y, upem,
-                       filename_fn=None):
+                       filename_fn=None, trace_params=None):
     """Build the machine-readable metadata.json for a font's output folder.
 
     Args:
@@ -128,6 +128,11 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
             If None, falls back to a simple a-z/cap_A-Z convention (which
             doesn't handle special chars — the caller should pass the
             pipeline's `safe_filename` instead).
+        trace_params: dict of trace-time parameters (size, pad, charset)
+            recorded under the 'trace' key. The stroke store's coordinates
+            live in the canvas defined by size/pad, so every later
+            consumer (export/import-corel, sync-edits, the hfont rep
+            builders) reads them from here instead of assuming defaults.
     """
     if filename_fn is None:
         def filename_fn(c):
@@ -148,7 +153,7 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
             'issues': issues,
         }
 
-    return json.dumps({
+    data = {
         'font_name': font_name,
         'font_file': font_file,
         'license': license_id,
@@ -156,4 +161,7 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
         'canvas_dims': list(canvas_dims),
         'baseline_y': baseline_y,
         'letters': letters,
-    }, indent=2)
+    }
+    if trace_params:
+        data['trace'] = trace_params
+    return json.dumps(data, indent=2)

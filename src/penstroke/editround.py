@@ -68,8 +68,8 @@ def save_stroke_store(output_dir, traced_map):
              'w': [round(float(v), 2) for v in ws]}
             for (xs, ys, ws) in strokes
         ]
-    with open(store_path(output_dir), 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False)
+    from penstroke.fileio import write_json_atomic
+    write_json_atomic(store_path(output_dir), data)
 
 
 def load_stroke_store(output_dir):
@@ -133,8 +133,8 @@ def merge_stroke_bez(output_dir, bez_map):
             if segs:
                 s['bez'] = [[round(float(v), 2) for v in seg]
                             for seg in segs]
-    with open(path, 'w', encoding='utf-8') as f:
-        json.dump(data, f, ensure_ascii=False)
+    from penstroke.fileio import write_json_atomic
+    write_json_atomic(path, data)
 
 
 # Charset presets live in penstroke.charset (dependency-light so
@@ -274,6 +274,11 @@ def read_edit_csv(csv_path):
             parts = raw.split(';')
             tag = parts[0]
             if tag == 'H':
+                if len(parts) < 7 or parts[1] != 'penstroke-edit':
+                    raise ValueError(
+                        f'{csv_path}: not a penstroke edit CSV (header '
+                        f'magic missing — was the file re-saved by a '
+                        f'spreadsheet tool?)')
                 header = {
                     'version': parts[2],
                     'font_name': parts[3],
@@ -322,7 +327,7 @@ def read_edit_csv(csv_path):
     return header, glyphs
 
 
-def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
+def import_edit_csv(output_dir, edited_csv, size=None, verbose=True):
     """Merge an edited CSV into a trace folder and rebuild it.
 
     The full import-corel operation: parse the CSV, resolve glyph
@@ -331,6 +336,13 @@ def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
     glyphs present in the CSV in the stroke store, re-render the whole
     output folder, and write the .imported.json marker that makes
     `penstroke sync-edits` idempotent.
+
+    `size` is the trace-time rasterization size — the canvas the
+    store's (and CSV's) coordinates live in. Default: the metadata.json
+    'trace' block, falling back to the CSV header, then the legacy 384.
+    Widths resample against the ink rasterized at this size, so a
+    mismatch silently corrupts them; a header/effective conflict is
+    reported loudly.
 
     Returns (n_exchanged, n_kept).
     """
@@ -346,7 +358,22 @@ def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
         raise FileNotFoundError(
             f'no source font found under {output_dir}/source/')
     ttf = fonts[0]
+    # Snapshot the content hash BEFORE reading: if Corel is still
+    # writing the file, the marker records what we actually parsed and
+    # the completed file re-imports on the next sync (torn-read guard).
+    csv_sha1 = handshake.file_sha1(edited_csv)
     header, glyphs = read_edit_csv(edited_csv)
+
+    header_size = header.get('size') or 0
+    if size is None:
+        size = (meta.get('trace', {}).get('size')
+                or header_size or 384)
+    size = int(size)
+    if header_size and header_size != size:
+        print(f'WARNING: {os.path.basename(edited_csv)} header says '
+              f'size={header_size} but this trace uses size={size}; '
+              f'importing at {size}. If widths look wrong, the CSV was '
+              f'exported with a mismatched --size.')
 
     # Glyph identity travels via the page name (= safe filename stem);
     # build the reverse map from metadata. chr(0) = "unknown" from the
@@ -400,7 +427,8 @@ def import_edit_csv(output_dir, edited_csv, size=384, verbose=True):
     # trace_font rewrote strokes.json (polyline only) — merge the exact
     # cubics back in per stroke.
     merge_stroke_bez(output_dir, prior_bez)
-    handshake.write_imported_marker(edited_csv, list(edited.keys()))
+    handshake.write_imported_marker(edited_csv, list(edited.keys()),
+                                    csv_sha1=csv_sha1)
     return len(edited), len(current) - len(edited)
 
 

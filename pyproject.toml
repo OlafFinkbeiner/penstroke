@@ -19,6 +19,7 @@ dependencies = [
     "Pillow>=9.4",
     "fonttools>=4.40",
     "networkx>=3.0",
+    "uharfbuzz>=0.37",  # text shaping for the layout engine (layout.py)
 ]
 
 [project.optional-dependencies]

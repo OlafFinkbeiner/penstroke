@@ -80,8 +80,11 @@ def load_manifest(bundle_dir):
     if not os.path.exists(path):
         raise HFontError(f'{bundle_dir}: no {MANIFEST_NAME} — not an hfont '
                          'bundle')
-    with open(path, encoding='utf-8') as f:
-        m = json.load(f)
+    try:
+        with open(path, encoding='utf-8') as f:
+            m = json.load(f)
+    except json.JSONDecodeError as e:
+        raise HFontError(f'{bundle_dir}: corrupt {MANIFEST_NAME}: {e}')
     if m.get('hfont') != HFONT_VERSION:
         raise HFontError(f'{bundle_dir}: hfont version {m.get("hfont")!r} '
                          f'not supported (expected {HFONT_VERSION})')
@@ -89,9 +92,9 @@ def load_manifest(bundle_dir):
 
 
 def save_manifest(bundle_dir, manifest):
-    with open(manifest_path(bundle_dir), 'w', encoding='utf-8') as f:
-        json.dump(manifest, f, indent=2, ensure_ascii=False)
-        f.write('\n')
+    from penstroke.fileio import write_json_atomic
+    write_json_atomic(manifest_path(bundle_dir), manifest,
+                      indent=2, trailing_newline=True)
 
 
 # ---------------------------------------------------------------------------

@@ -121,6 +121,7 @@ def trace_font(
     # Default: the chosen charset preset, intersected with the font's
     # cmap ('latin' covers ASCII + Latin-1; use charset='all' for the
     # complete font).
+    letters_from_charset = letters is None
     if letters is None:
         try:
             from penstroke.charset import font_charset
@@ -168,6 +169,7 @@ def trace_font(
     canvas_dims = None
     baseline_y = None
     upem = None
+    canvas_pad = None
 
     if glyph_source is None:
         def glyph_source(ch):
@@ -202,6 +204,7 @@ def trace_font(
             canvas_dims = (meta['canvas_w'], meta['canvas_h'])
             baseline_y = meta['baseline_y']
             upem = meta['upem']
+            canvas_pad = meta.get('pad')
 
         # Quality assessment (includes OCR if available)
         metrics = assess_letter(mask, traced, expected_stroke_count=None, char=ch)
@@ -225,13 +228,12 @@ def trace_font(
 
     # 2b. Persist the stroke store — the SOURCE OF TRUTH for this font's
     # current decomposition. Corel edit rounds merge into this file, so
-    # partial edits accumulate across rounds.
-    try:
-        from penstroke.editround import save_stroke_store
-        save_stroke_store(output_dir,
-                          {ch: t for ch, (m, t) in traced_per_letter.items()})
-    except Exception:
-        pass
+    # partial edits accumulate across rounds. A failure here must be
+    # loud: everything downstream (export-corel, bundles, re-renders)
+    # reads this file, and a stale store silently ships old strokes.
+    from penstroke.editround import save_stroke_store
+    save_stroke_store(output_dir,
+                      {ch: t for ch, (m, t) in traced_per_letter.items()})
 
     # 3. Alphabet grid SVGs
     if grid_items:
@@ -265,6 +267,16 @@ def trace_font(
 
     # 5. Metadata + report
     if canvas_dims is not None:
+        # Record the trace-time canvas parameters: the stroke store's
+        # coordinates live in this canvas, and export/import-corel,
+        # sync-edits and the hfont rep builders must all rasterize at
+        # the SAME size/pad or widths silently resample against the
+        # wrong-scale ink.
+        trace_params = {'size': size}
+        if canvas_pad is not None:
+            trace_params['pad'] = canvas_pad
+        if letters_from_charset:
+            trace_params['charset'] = charset
         metadata = build_metadata_json(
             font_name=font_name,
             font_file=f'source/{os.path.basename(ttf_path)}',
@@ -274,6 +286,7 @@ def trace_font(
             baseline_y=baseline_y,
             upem=upem,
             filename_fn=safe_filename,
+            trace_params=trace_params,
         )
         with open(os.path.join(output_dir, 'metadata.json'), 'w', encoding='utf-8') as f:
             f.write(metadata)

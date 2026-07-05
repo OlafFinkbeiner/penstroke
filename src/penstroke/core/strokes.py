@@ -187,13 +187,24 @@ def build_strokes(G):
     return strokes
 
 
-def trace_closed_loops(skel):
+def trace_closed_loops(skel, covered=None):
     """Handle glyphs whose skeleton is a closed loop with no endpoints
     or junctions ('o', 'O', etc., and the inside loops of 'D', 'Q', etc.).
 
     These have no special points, so `skeleton_to_graph` produces no nodes
     to walk from. Instead we identify each connected component that is a
     closed loop (no degree-1 pixels) and walk it as one stroke.
+
+    `covered` is the set of (y, x) pixels already carried by the traced
+    graph's edges. Components that overlap it are decomposed by the
+    regular pipeline and must be skipped here — walking them again would
+    trace them twice (e.g. '8': junctions but no endpoints, so an
+    endpoint-only test misses it). The overlap test also rescues loops
+    whose graph edge was discarded as a short self-loop during junction
+    merging: their pixels are NOT covered, so they are walked here.
+    Without `covered`, falls back to skipping components that contain
+    any special point (endpoint or junction, mirroring
+    skeleton_to_graph's node criterion).
 
     Convention: start at the topmost pixel and go clockwise. This matches
     how most people draw an 'o' — start at the top and go around.
@@ -207,23 +218,25 @@ def trace_closed_loops(skel):
         if len(cc_pixels) < 8:
             continue
 
-        # Skip components that have an endpoint — those are handled by
-        # build_strokes via the regular pipeline.
         cc_set = set(map(tuple, cc_pixels))
-        has_endpoint = False
-        for (y, x) in cc_set:
-            nbrs = 0
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    if dy == 0 and dx == 0:
-                        continue
-                    if (y + dy, x + dx) in cc_set:
-                        nbrs += 1
-            if nbrs == 1:
-                has_endpoint = True
-                break
-        if has_endpoint:
-            continue
+        if covered is not None:
+            if cc_set & covered:
+                continue
+        else:
+            has_special = False
+            for (y, x) in cc_set:
+                nbrs = 0
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        if dy == 0 and dx == 0:
+                            continue
+                        if (y + dy, x + dx) in cc_set:
+                            nbrs += 1
+                if nbrs == 1 or nbrs >= 3:
+                    has_special = True
+                    break
+            if has_special:
+                continue
 
         # Walk the loop from an arbitrary starting pixel.
         start = tuple(cc_pixels[0])

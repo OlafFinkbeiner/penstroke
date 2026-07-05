@@ -71,6 +71,111 @@ def test_trace_glyph_basic():
         print(f"✓ {ch}: {len(traced)} strokes via {tracer_name}")
 
 
+def test_trace_determinism():
+    """Tracing the same glyph twice yields identical strokes.
+
+    Determinism is load-bearing: skeletonization must run with a fixed
+    rng (core/skeleton.py passes rng=0) or the same glyph yields
+    different graph topologies across runs — the historic symptom was
+    intermittent stray strokes and unstable stroke counts.
+    """
+    import numpy as np
+    from penstroke.tracer import trace_glyph_eulerian
+    for ch in ('a', 'g', '8', 'X'):
+        runs = []
+        for _ in range(2):
+            _, _, _, traced, _, _ = trace_glyph_eulerian(CAVEAT, ch,
+                                                         size=384)
+            runs.append(traced)
+        first, second = runs
+        assert len(first) == len(second), \
+            f"{ch}: stroke count differs across runs " \
+            f"({len(first)} vs {len(second)})"
+        for i, (s1, s2) in enumerate(zip(first, second)):
+            for a1, a2 in zip(s1, s2):
+                assert np.array_equal(a1, a2), \
+                    f"{ch}: stroke {i} geometry differs across runs"
+    print("✓ tracing is deterministic (a, g, 8, X twice → identical)")
+
+
+def test_closed_loops_not_double_traced():
+    """Glyphs whose skeleton has junctions but no endpoints ('8') are
+    decomposed exactly once.
+
+    Regression: trace_closed_loops used to skip only components with an
+    endpoint, so an '8' (junctions, no endpoints) was decomposed by the
+    junction-first pipeline AND re-walked as an orphan loop — a
+    duplicated stroke over the same ink.
+    """
+    import numpy as np
+    from penstroke.tracer import trace_glyph_eulerian
+
+    def overlap_fraction(s1, s2):
+        """Fraction of s1's points lying within 2px of some s2 point."""
+        p1 = np.column_stack([s1[0], s1[1]])
+        p2 = np.column_stack([s2[0], s2[1]])
+        d = np.sqrt(((p1[:, None, :] - p2[None, :, :]) ** 2).sum(-1))
+        return float((d.min(axis=1) < 2.0).mean())
+
+    for ch in ('8', 'o', 'B'):
+        _, _, _, traced, _, _ = trace_glyph_eulerian(CAVEAT, ch, size=384)
+        assert traced, f"{ch}: no strokes"
+        for i in range(len(traced)):
+            for j in range(i + 1, len(traced)):
+                frac = overlap_fraction(traced[i], traced[j])
+                assert frac < 0.8, \
+                    f"{ch}: strokes {i} and {j} overlap {frac:.0%} — " \
+                    f"double-traced loop"
+    print("✓ no double-traced loops (8, o, B)")
+
+
+def test_store_write_is_atomic():
+    """A crash mid-write never truncates strokes.json.
+
+    The store accumulates hand edits (Corel rounds), so a partial write
+    would destroy them. fileio.write_json_atomic writes a temp file and
+    os.replace()s it; a failure during serialization must leave the old
+    file byte-identical and no temp litter behind.
+    """
+    import numpy as np
+    import penstroke.fileio as fileio
+    from penstroke.editround import save_stroke_store, load_stroke_store
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        stroke = (np.array([1.0, 2.0]), np.array([3.0, 4.0]),
+                  np.array([1.5, 1.5]))
+        save_stroke_store(tmpdir, {'a': [stroke]})
+        store_file = Path(tmpdir) / 'strokes.json'
+        before = store_file.read_bytes()
+
+        class Boom(Exception):
+            pass
+
+        real_dump = fileio.json.dump
+
+        def exploding_dump(data, f, **kw):
+            f.write('{"partial": ')   # simulate a write cut short
+            raise Boom()
+
+        fileio.json.dump = exploding_dump
+        try:
+            try:
+                save_stroke_store(tmpdir, {'b': [stroke]})
+                raise AssertionError('exploding dump did not raise')
+            except Boom:
+                pass
+        finally:
+            fileio.json.dump = real_dump
+
+        assert store_file.read_bytes() == before, \
+            'crashed write corrupted strokes.json'
+        leftovers = [p for p in Path(tmpdir).iterdir()
+                     if p.suffix == '.tmp']
+        assert not leftovers, f'temp litter left behind: {leftovers}'
+        assert load_stroke_store(tmpdir), 'old store no longer loads'
+    print("✓ store writes are atomic (crash mid-write leaves old store)")
+
+
 def test_full_pipeline_writes_expected_files():
     """trace_font produces the documented output structure."""
     from penstroke import trace_font
@@ -97,6 +202,11 @@ def test_full_pipeline_writes_expected_files():
         meta = json.loads((out / 'metadata.json').read_text())
         assert meta['font_name'] == 'Caveat'
         assert set(meta['letters'].keys()) == set('abXo')
+        # The trace block records the canvas the stroke store's
+        # coordinates live in; edit-round commands and the hfont rep
+        # builders resolve size/pad from here.
+        assert meta['trace']['size'] == 384
+        assert meta['trace']['pad'] == 40
         for ch, info in meta['letters'].items():
             assert info['stroke_count'] > 0
             # Quality score can be 0 if OCR validation fails — that's a valid
@@ -104,6 +214,32 @@ def test_full_pipeline_writes_expected_files():
             assert 'quality_score' in info
             assert 'file' in info
         print("✓ pipeline writes all expected files")
+
+
+def test_qa_verb():
+    """`penstroke qa` runs the cascade against the stroke store and
+    writes qa.json plus an idempotent report.md section."""
+    from penstroke import trace_font
+    from penstroke.cli import main as cli_main
+    with tempfile.TemporaryDirectory() as tmpdir:
+        out = Path(tmpdir) / 'caveat'
+        trace_font(CAVEAT, str(out), font_name='Caveat',
+                   letters='ao', verbose=False)
+        cli_main(['qa', str(out)])
+        assert (out / 'qa.json').exists()
+        report = (out / 'report.md').read_text(encoding='utf-8')
+        assert report.count('## Cascade QA') == 1
+        # Re-running must replace the section, not stack a second one.
+        cli_main(['qa', str(out)])
+        report = (out / 'report.md').read_text(encoding='utf-8')
+        assert report.count('## Cascade QA') == 1
+        # A clean 'o' must not fire the zigzag detector: a closed loop
+        # ends where it starts, which is not backtracking.
+        qa = json.loads((out / 'qa.json').read_text(encoding='utf-8'))
+        for iss in qa.get('o', []):
+            assert iss['kind'] != 'zigzag', \
+                'closed loop flagged as zigzag'
+    print("✓ penstroke qa (store-based cascade, idempotent report section)")
 
 
 def test_glyph_svgs_have_metadata_attributes():
@@ -262,13 +398,40 @@ def test_handshake_pending_logic():
         handshake.write_outgoing_marker(str(out_csv), myslug, tmpdir)
         assert handshake.pending_edits(tmpdir,
                                        corel_dir=str(corel)) == []
-        # Corel re-saves the same file -> mtime past the sidecar's
-        # record -> it IS a pending return now; the imported marker
-        # then clears it.
+        # A bumped mtime with IDENTICAL bytes (cloud sync, copy, touch)
+        # is still pristine — content, not mtime, decides. Importing a
+        # pristine export would replace raw traced strokes with the
+        # export's smoothed refit.
+        time.sleep(0.01)
+        out_csv.write_text('H;...', encoding='utf-8')
+        assert handshake.pending_edits(tmpdir,
+                                       corel_dir=str(corel)) == [], \
+            'identical-content rewrite must stay pristine'
+        # Corel re-saves with CHANGED content -> it IS a pending return
+        # now; the imported marker then clears it.
         time.sleep(0.01)
         out_csv.write_text('H;...edited', encoding='utf-8')
         assert handshake.pending_edits(
             tmpdir, corel_dir=str(corel)) == [str(out_csv)]
+        time.sleep(0.01)
+        handshake.write_imported_marker(str(out_csv), ['a'])
+        assert handshake.pending_edits(tmpdir,
+                                       corel_dir=str(corel)) == []
+        # Quarantine: a CSV that failed to import is skipped while its
+        # content is unchanged, retried once the content changes.
+        time.sleep(0.01)
+        out_csv.write_text('H;...broken', encoding='utf-8')
+        assert handshake.pending_edits(
+            tmpdir, corel_dir=str(corel)) == [str(out_csv)]
+        handshake.write_failed_marker(str(out_csv), 'parse error')
+        assert handshake.pending_edits(tmpdir,
+                                       corel_dir=str(corel)) == [], \
+            'quarantined CSV must not stay pending'
+        time.sleep(0.01)
+        out_csv.write_text('H;...fixed', encoding='utf-8')
+        assert handshake.pending_edits(
+            tmpdir, corel_dir=str(corel)) == [str(out_csv)], \
+            'content change must lift the quarantine'
         time.sleep(0.01)
         handshake.write_imported_marker(str(out_csv), ['a'])
         assert handshake.pending_edits(tmpdir,
@@ -333,10 +496,20 @@ def test_sync_edits_roundtrip():
         assert not handshake.has_pending(str(out), inbox=str(inbox),
                                          corel_dir=str(corel))
 
-        # "Corel" re-saves the SAME file (our own export format is
-        # importable — B records flatten on read).
+        # A byte-identical rewrite (what a cloud sync or copy does) must
+        # NOT count as an edited return — content decides, not mtime.
         time.sleep(0.05)
         csv.write_text(csv.read_text(encoding='utf-8'), encoding='utf-8')
+        assert not handshake.pending_edits(str(out), corel_dir=str(corel)), \
+            'identical-content rewrite must not become a return'
+
+        # "Corel" re-saves the file with a real change (our own export
+        # format is importable — B records flatten on read; a trailing
+        # blank line is enough to change the content hash and is
+        # skipped by the parser).
+        time.sleep(0.05)
+        csv.write_text(csv.read_text(encoding='utf-8') + '\n',
+                       encoding='utf-8')
 
         store_before = (out / 'strokes.json').stat().st_mtime
         cli_main(sync)
@@ -360,15 +533,32 @@ def test_sync_edits_roundtrip():
         store_after = (out / 'strokes.json').stat().st_mtime
         cli_main(sync)
         assert (out / 'strokes.json').stat().st_mtime == store_after
+
+        # A malformed CSV routed to this font (e.g. re-saved by Excel)
+        # must not wedge the sync: it is quarantined with a .failed.json
+        # marker and the sync completes.
+        bad = corel / 'sel-caveat-baaaad.csv'
+        bad.write_text('char,stroke,x,y\na,0,1,2\n', encoding='utf-8')
+        cli_main(sync)   # must not raise
+        assert (corel / 'sel-caveat-baaaad.csv.failed.json').exists(), \
+            'failed import not quarantined'
+        assert not handshake.has_pending(str(out), inbox=str(inbox),
+                                         corel_dir=str(corel)), \
+            'quarantined CSV still pending'
         print("✓ sync-edits roundtrip (inbox selection → corel CSV → "
-              "re-saved in place → merge → idempotent; exact cubics kept)")
+              "edited return → merge → idempotent; exact cubics kept; "
+              "malformed CSV quarantined)")
 
 
 if __name__ == '__main__':
     test_imports()
     test_curvefit_reduces_polyline()
     test_trace_glyph_basic()
+    test_trace_determinism()
+    test_closed_loops_not_double_traced()
+    test_store_write_is_atomic()
     test_full_pipeline_writes_expected_files()
+    test_qa_verb()
     test_glyph_svgs_have_metadata_attributes()
     test_houdini_export()
     test_handshake_pending_logic()

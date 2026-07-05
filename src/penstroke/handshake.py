@@ -20,11 +20,18 @@ through files in TWO global drop folders, picked up on the next cook
                         name that contains the font's name (Corel's
                         default '<doctitle>_edited.csv' qualifies as
                         long as the document kept the font in its
-                        name). A CSV counts
-                        as an edited return when it has no pristine
-                        sidecar (mtime check), and as merged once its
-                        .imported.json marker is newer. Nothing is
-                        moved or deleted; mtimes drive the state.
+                        name). A CSV counts as an edited return when
+                        its CONTENT differs from the pristine export
+                        recorded in the .outgoing.json sidecar, and as
+                        merged once its .imported.json marker records
+                        the same content hash. mtimes are only a fast
+                        path — a cloud-sync or copy that bumps the
+                        mtime without changing bytes changes nothing.
+                        A CSV that fails to import is quarantined with
+                        a .failed.json marker and retried only when
+                        its content changes, so one malformed file
+                        can't wedge the sync. Nothing is moved or
+                        deleted.
 
 Per-font fallbacks (the older convention, still supported):
 <trace_dir>/selections/*.json, and <trace_dir>/edits/*.csv for
@@ -42,6 +49,7 @@ scipy/skimage (pulled in by editround's heavy siblings) don't exist.
 """
 
 import glob
+import hashlib
 import json
 import os
 
@@ -50,7 +58,23 @@ SUBSETS_DIR = 'subsets'
 EDITS_DIR = 'edits'
 IMPORTED_MARKER_SUFFIX = '.imported.json'
 OUTGOING_MARKER_SUFFIX = '.outgoing.json'
+FAILED_MARKER_SUFFIX = '.failed.json'
 _MTIME_EPS = 1e-6
+
+
+def file_sha1(path):
+    """Content hash of a file — the handshake's identity primitive.
+
+    State decisions compare content, never mtime alone: cloud sync,
+    robocopy, or a disk move bump mtimes without editing anything, and
+    treating that as an edit would silently re-import a pristine export
+    (replacing raw traced strokes with the export's smoothed refit).
+    """
+    h = hashlib.sha1()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(65536), b''):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 def selections_dir(trace_dir):
@@ -82,6 +106,10 @@ def imported_marker_path(edited_csv):
 
 def outgoing_marker_path(csv_path):
     return csv_path + OUTGOING_MARKER_SUFFIX
+
+
+def failed_marker_path(edited_csv):
+    return edited_csv + FAILED_MARKER_SUFFIX
 
 
 def read_selection_record(selection_path):
@@ -166,11 +194,12 @@ def selections_for(trace_dir, inbox=None):
 
 def write_outgoing_marker(csv_path, font, trace_dir):
     """Record that WE wrote this Corel CSV (export direction). The
-    stored mtime is what later distinguishes the pristine export from
-    the same file re-saved by Corel's export macro."""
+    stored content hash is what later distinguishes the pristine export
+    from a genuinely edited return; the mtime is only a fast path."""
     marker = {
         'csv': os.path.basename(csv_path),
         'csv_mtime': os.path.getmtime(csv_path),
+        'csv_sha1': file_sha1(csv_path),
         'font': _norm(font),
         'trace_dir': os.path.abspath(trace_dir),
     }
@@ -178,14 +207,36 @@ def write_outgoing_marker(csv_path, font, trace_dir):
         json.dump(marker, f, ensure_ascii=False, indent=2)
 
 
-def write_imported_marker(edited_csv, imported_glyphs):
-    """Record a successful import of an edited CSV (sync idempotence)."""
+def write_imported_marker(edited_csv, imported_glyphs, csv_sha1=None):
+    """Record a successful import of an edited CSV (sync idempotence).
+
+    `csv_sha1` should be the hash of the content that was actually
+    parsed (snapshotted BEFORE the import read the file). If the file
+    keeps being written while we import — Corel mid-export — the marker
+    then records the pre-read content, the current file hashes
+    differently, and the completed edit is re-imported on the next
+    sync instead of being silently lost.
+    """
     marker = {
         'csv': os.path.basename(edited_csv),
         'csv_mtime': os.path.getmtime(edited_csv),
+        'csv_sha1': csv_sha1 or file_sha1(edited_csv),
         'imported_glyphs': sorted(imported_glyphs),
     }
     with open(imported_marker_path(edited_csv), 'w', encoding='utf-8') as f:
+        json.dump(marker, f, ensure_ascii=False, indent=2)
+
+
+def write_failed_marker(edited_csv, error):
+    """Quarantine a CSV that failed to import. The recorded content
+    hash means it is retried only once the file actually changes —
+    one malformed file must never wedge sync-edits forever."""
+    marker = {
+        'csv': os.path.basename(edited_csv),
+        'csv_sha1': file_sha1(edited_csv),
+        'error': str(error),
+    }
+    with open(failed_marker_path(edited_csv), 'w', encoding='utf-8') as f:
         json.dump(marker, f, ensure_ascii=False, indent=2)
 
 
@@ -193,28 +244,69 @@ def _newer(path, than):
     return os.path.getmtime(path) >= os.path.getmtime(than)
 
 
-def _is_pristine_export(csv):
-    """True while the CSV is still exactly what sync-edits wrote (the
-    outgoing sidecar's recorded mtime matches). Corel re-saving the
-    file bumps its mtime past the record and flips it to a return."""
-    marker = outgoing_marker_path(csv)
-    if not os.path.exists(marker):
-        return False
+def _read_marker(path):
+    if not os.path.exists(path):
+        return None
     try:
-        with open(marker, encoding='utf-8') as f:
-            recorded = json.load(f).get('csv_mtime', 0.0)
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
     except ValueError:
+        return None
+
+
+def _is_pristine_export(csv):
+    """True while the CSV's CONTENT is still exactly what sync-edits
+    wrote. A matching mtime short-circuits (no hashing); a bumped mtime
+    with identical bytes (cloud sync, copy, touch) is still pristine —
+    the recorded mtime is refreshed so the next check stays cheap.
+    Legacy sidecars without a hash keep the old mtime-only rule."""
+    rec = _read_marker(outgoing_marker_path(csv))
+    if rec is None:
         return False
-    return os.path.getmtime(csv) <= recorded + _MTIME_EPS
+    if os.path.getmtime(csv) <= rec.get('csv_mtime', 0.0) + _MTIME_EPS:
+        return True
+    sha = rec.get('csv_sha1')
+    if sha is None:
+        return False                    # legacy marker: mtime rules
+    if file_sha1(csv) != sha:
+        return False                    # real content change → a return
+    rec['csv_mtime'] = os.path.getmtime(csv)
+    try:
+        with open(outgoing_marker_path(csv), 'w', encoding='utf-8') as f:
+            json.dump(rec, f, ensure_ascii=False, indent=2)
+    except OSError:
+        pass                            # refresh is only an optimization
+    return True
+
+
+def _already_imported(csv):
+    """Has this exact content already been merged? Content-hash check;
+    legacy markers without a hash fall back to the mtime rule."""
+    rec = _read_marker(imported_marker_path(csv))
+    if rec is None:
+        return False
+    sha = rec.get('csv_sha1')
+    if sha is not None:
+        return file_sha1(csv) == sha
+    marker = imported_marker_path(csv)
+    return os.path.exists(marker) and _newer(marker, csv)
+
+
+def _quarantined(csv):
+    """True while the CSV still has the exact content that failed to
+    import. Any content change lifts the quarantine (retry)."""
+    rec = _read_marker(failed_marker_path(csv))
+    if rec is None:
+        return False
+    return rec.get('csv_sha1') == file_sha1(csv)
 
 
 def _routes_to(csv, names):
     """Does this exchange-folder CSV belong to a font with `names`?
-    Filename tokens first (works for sel-<slug>-<hash> AND Corel's
-    free-form save names), outgoing sidecar second (covers files whose
-    name carries no font at all)."""
-    if _name_candidates(csv) & names:
-        return True
+    The outgoing sidecar is authoritative when present — it names the
+    exact font, so a prefix-family neighbour ('Exo' vs 'Exo 2') can
+    never claim the file by filename tokens. Token matching is the
+    fallback for Corel's free-form save names, which carry no sidecar."""
     marker = outgoing_marker_path(csv)
     if os.path.exists(marker):
         try:
@@ -222,15 +314,17 @@ def _routes_to(csv, names):
                 return json.load(f).get('font') in names
         except ValueError:
             pass
-    return False
+    return bool(_name_candidates(csv) & names)
 
 
 def pending_edits(trace_dir, corel_dir=None):
     """Edited CSVs awaiting import, oldest first so later edits win on
     overlapping glyphs. Sources: the font's edits/ folder (every CSV
     there is a return by definition) and the global Corel exchange
-    folder (CSVs routed to this font that are no longer the pristine
-    export). 'Awaiting' = no .imported.json marker newer than the CSV."""
+    folder (CSVs routed to this font whose content differs from the
+    pristine export). 'Awaiting' = content not yet recorded by an
+    .imported.json marker, and not quarantined by a .failed.json
+    marker from a previous failed import of the same content."""
     candidates = list(glob.glob(os.path.join(edits_dir(trace_dir), '*.csv')))
     if corel_dir and os.path.isdir(corel_dir):
         names = _trace_dir_names(trace_dir)
@@ -239,8 +333,7 @@ def pending_edits(trace_dir, corel_dir=None):
                 candidates.append(csv)
     out = []
     for csv in candidates:
-        marker = imported_marker_path(csv)
-        if not os.path.exists(marker) or not _newer(marker, csv):
+        if not _already_imported(csv) and not _quarantined(csv):
             out.append(csv)
     return sorted(out, key=os.path.getmtime)
 
