@@ -337,10 +337,9 @@ and stroke decomposition itself, which stays exactly as it is. This is a
 substrate swap under an unchanged junction-first tracer.
 
 **Risks to retire before committing:** Voronoi-based medial axes are
-noise-sensitive on near-degenerate contours; and the prototype has not been
-tested on the texture fonts that currently trip every performance guard.
+noise-sensitive on near-degenerate contours.
 
-**Winding rule — investigated 2026-07-25, partially resolved.** The
+**Winding rule — investigated and fixed 2026-07-25.** The
 prototype's even-odd fill is wrong more often than expected: measured
 directly (even-odd vs. nonzero fill of the same polygons, not vs. a raster
 ground truth — that conflates it with unrelated AA/discretization noise),
@@ -350,30 +349,42 @@ real fonts disagree**, and NOT only on decorative/texture fonts — Roboto
 in the prototype (nonzero winding, the TrueType-spec-correct rule);
 resolution-invariance holds at 40/40 with the fix, so it's free.
 
-**But fixing the fill rule surfaced a deeper, still-open issue.** Roboto
-`B` traced through the corrected prototype gives a degenerate result — 151
-junctions, 72 loops, for a plain two-counter letterform. Root cause: its 2
-contours have heavily overlapping bounding boxes (one spans y 123-396, the
-other y 239-396, overlapping across the whole middle third) — a standard
-variable-font authoring shortcut ("overlapping simple contours": draw two
-full solid shapes and let the renderer's winding rule composite them,
-rather than authoring one shape with clean hole contours per master).
-Nonzero winding gets the fill (inside/outside) right, but the raw contour
-boundary still contains the overlap SEAM where the two shapes cross in the
-middle — the Voronoi step samples that seam as if it were a true outline
-edge, since it doesn't know the fill rule dissolves it away, and θ-pruning
-doesn't clean up the resulting internal structure. **This needs an actual
-polygon union (boolean OR under nonzero winding) before resampling for
-Voronoi, not just correct point classification** — more work than the
-fill-rule fix alone. Likely candidates: `shapely`'s `unary_union` (new
-dependency) or a custom nonzero-winding polygon-clipping pass. Not
-implemented; flagging as its own gated risk rather than folding into the
-winding-rule item, since the fix shape is different.
+**Overlapping-contour seams — investigated and fixed 2026-07-25.** Fixing
+the fill rule surfaced a deeper issue: Roboto `B` traced through the
+corrected prototype gave a degenerate result — 151 junctions, 72 loops, for
+a plain two-counter letterform. Root cause: its 2 contours have heavily
+overlapping bounding boxes (one spans y 123-396, the other y 239-396,
+overlapping across the whole middle third) — a standard variable-font
+authoring shortcut ("overlapping simple contours": draw two full solid
+shapes and let the renderer's winding rule composite them, rather than
+authoring one shape with clean hole contours per master). Nonzero winding
+gets the fill right, but the raw contour boundary still contains the
+overlap SEAM where the two shapes cross — the Voronoi step samples that
+seam as a real outline edge, since it doesn't know the fill rule dissolves
+it away, and θ-pruning doesn't clean up the resulting structure.
+
+Fix: `resolve_overlaps()` in the prototype — union the positively-wound
+(CCW) contours via `shapely.ops.unary_union`, union the negatively-wound
+(CW / hole) contours, subtract hole-union from solid-union. Exact
+nonzero-winding fill for the common case (each contour simple; only
+inter-contour overlap matters), and it dissolves the seam because overlap
+between same-signed contours is just... still filled.
+`Polygon(...).buffer(0)` on each input first — GEOS otherwise raises
+(`TopologyException: side location conflict`) on the near-duplicate /
+near-zero-length segments Bezier flattening produces.
+
+**Verified:** Roboto `B` 151j/72loop → **4j/2loop** (sane: stem + 2 bowl
+counters); `g` 202j/98loop → **4j/1loop**. Resolution-invariance still
+40/40 with the union step wired into `signature()`. Texture-font
+performance unaffected — JacquardaBastarda9Charted (160 contours, none of
+which actually overlap each other) runs the union step in <0.1s, total
+trace time unchanged (~0.5s), and correctly returns all 160 contours
+untouched since there's nothing to merge. `shapely` added as a prototype-
+only dependency (not yet in the core pipeline's dependency list).
 
 **Gate:** resolution-invariance 40/40 holds on the full 6-font charset;
 outline-coverage metric ≥ current; visual diagnostics on the 6-font set at
-least as good; Roboto-class overlapping-contour fonts produce sane topology
-(not the 151-junction degenerate case above).
+least as good.
 
 ### B1. Recover the pen — closed-form, per font
 

@@ -35,7 +35,54 @@ import sys
 import numpy as np
 import networkx as nx
 from scipy.spatial import Voronoi, cKDTree
+from shapely.geometry import Polygon
+from shapely.ops import unary_union
 from penstroke.core.outline import extract_outlines
+
+
+def _signed_area(poly):
+    p = np.asarray(poly, float)
+    x, y = p[:, 0], p[:, 1]
+    return 0.5 * np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y)
+
+
+def resolve_overlaps(polys):
+    """Dissolve overlapping-contour seams into a clean simple-polygon
+    boundary (exterior + holes), via nonzero-winding-correct polygon union.
+
+    Some real fonts (Roboto included) author glyphs as two or more
+    OVERLAPPING solid contours by design -- a standard variable-font
+    shortcut that relies on the renderer's winding rule to composite them,
+    rather than one contour with clean holes. `inside_mask` classifies fill
+    correctly for that (nonzero winding), but the Voronoi step samples the
+    raw contours directly, and the overlap SEAM (where two contours cross
+    each other) has no such classification -- it gets treated as a real
+    outline edge, producing a degenerate medial axis (measured on Roboto
+    'B': 151 spurious junctions / 72 loops for a plain two-counter
+    letterform). Fix: union the positively-wound (CCW) contours, union the
+    negatively-wound (CW, i.e. holes) contours, then SUBTRACT hole-union
+    from solid-union -- this is exact nonzero-winding fill for the common
+    case (each contour simple; only inter-contour overlap matters, which
+    covers this case), and it dissolves the seam because overlap between
+    same-signed contours is just... still filled. `.buffer(0)` on each
+    input polygon first: GEOS otherwise raises on the near-duplicate/
+    near-zero-length segments Bezier flattening produces. Confirmed fix:
+    Roboto 'B' 151j/72loop -> 4j/2loop.
+    """
+    pos = [Polygon(p).buffer(0) for p in polys if _signed_area(p) > 0]
+    neg = [Polygon(p).buffer(0) for p in polys if _signed_area(p) < 0]
+    if not pos:
+        return []
+    pos_u = unary_union(pos)
+    result = pos_u.difference(unary_union(neg)) if neg else pos_u
+    geoms = list(result.geoms) if hasattr(result, 'geoms') else [result]
+    out = []
+    for g in geoms:
+        if g.is_empty:
+            continue
+        out.append(np.asarray(g.exterior.coords))
+        out.extend(np.asarray(ring.coords) for ring in g.interiors)
+    return out
 
 
 def _winding(poly, pts):
@@ -147,6 +194,9 @@ def signature(fpath, ch, size, theta=DEFAULT_THETA_DEG):
     """
     polys = extract_outlines(fpath, ch, size=size, pad=40,
                              tol_px=0.5 * size / REF_SIZE)
+    if not polys:
+        return (0, 0, 0)
+    polys = resolve_overlaps(polys)
     if not polys:
         return (0, 0, 0)
     G, _V, _r = vector_medial_axis(polys, step=size / SAMPLE_STEP_DIV,
