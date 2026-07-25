@@ -425,14 +425,38 @@ neither is committed:**
    straight stems collapse into a single point, because ordinary
    consecutive path vertices are also "spatially close" once epsilon
    approaches the sample step.
+3. (2026-07-25, second pass) Suspected attempt 2's real bug was the plain
+   `nx.Graph` silently deduplicating a second parallel edge whenever a
+   merged cluster reconnected to the same external neighbor twice (e.g.
+   both lobes of `8`'s pinch reaching the same real junction along two
+   distinct arcs) — a plain graph can't represent two edges between one
+   node pair, so the second arc just vanishes, which is exactly what would
+   turn a closed loop into an open path. Retried the identical clustering
+   with a `nx.MultiGraph` so parallel edges survive. Result: `8` still
+   doesn't land on the correct (0, 2) ends/junctions at any epsilon in
+   [0.5, 3.0] — it jumps straight from the RAW noisy signature (0, 6, 4)
+   to an OVER-merged (0, 2, 8), never landing on the right answer. Cause:
+   the noise isn't only vertex-position degeneracy, it's also *ridge*
+   degeneracy — Qhull's near-degenerate triangulation emits multiple
+   slightly-different ridges for what should be a single real medial-axis
+   edge, so preserving "all parallel edges after clustering" preserves
+   those spurious duplicates too. Distinguishing a genuinely-distinct arc
+   (keep both) from a duplicate ridge (keep one) needs actual geometric
+   reasoning about the edges, not just node proximity — confirms this
+   family of fix (cluster-then-reconnect, any bookkeeping variant) is the
+   wrong tool for this bug.
 
-**Not fixed.** The right fix likely isn't a post-hoc merge heuristic at
-all — it's probably the same disease C2's λ/θ filtration is meant to cure
-(a single principled criterion instead of an ad-hoc distance threshold).
-Scale of the bug: small (sub-pixel to a few pixels, only manifests at
-stroke widths approaching the sample step — i.e. hairline/thin weights).
-Whoever picks this up next: render the graph before trusting topology
-counts, the first pass here didn't and reached a wrong conclusion.
+**Not fixed, three attempts in.** The right fix likely isn't a post-hoc
+merge heuristic at all — it's probably the same disease C2's λ/θ
+filtration is meant to cure (a single principled criterion instead of an
+ad-hoc distance threshold). Scale of the bug: small (sub-pixel to a few
+pixels, only manifests at stroke widths approaching the sample step —
+i.e. hairline/thin weights). Whoever picks this up next: render the graph
+before trusting topology counts (attempt 1's false-positive `m` "fix" was
+exactly that mistake), and don't reach for a fourth merge-heuristic
+variant without a plan for telling real parallel arcs apart from
+duplicate ridges — that's the part all three attempts actually foundered
+on.
 
 **Graduated to real code, 2026-07-25.** With winding rule and overlap
 seams fixed, the prototype moved from `scripts/proto_vector_medial_axis.py`
