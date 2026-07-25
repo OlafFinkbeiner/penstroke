@@ -18,8 +18,18 @@ Run it to reproduce both numbers:
 CAVEAT: every length here must be em-relative or invariance leaks away. The
 first version of this script scored 31/40 purely because extract_outlines'
 tol_px defaults to an absolute 0.5px; passing tol_px scaled with `size`
-takes it to 40/40. Uses even-odd fill, which is wrong for fonts with
-overlapping contours -- a winding-rule pass is on B0's risk list.
+takes it to 40/40.
+
+WINDING RULE: uses nonzero (TrueType-spec-correct), not even-odd. This
+matters more than expected -- measured directly (even-odd vs nonzero fill
+of the SAME polygons, not vs. a raster ground truth, which conflates this
+with unrelated AA/discretization noise): 172 of 1660 multi-contour glyph
+instances (10.4%) sampled across ~200 real fonts disagree between the two
+rules, INCLUDING mainstream fonts, not just decorative/texture ones --
+Roboto 'B'/'g', Sora 'B', CascadiaCode 'B'/'@'/'8', ArchivoNarrow '&',
+SofiaSans '&'. Even-odd would silently mis-fill counters on a meaningful
+slice of ordinary fonts; this is a correctness requirement, not an edge
+case for weird fonts.
 """
 import sys
 import numpy as np
@@ -28,18 +38,21 @@ from scipy.spatial import Voronoi, cKDTree
 from penstroke.core.outline import extract_outlines
 
 
-def _contains(poly, pts):
-    """Vectorised even-odd ray cast of `pts` against one closed polygon."""
+def _winding(poly, pts):
+    """Signed crossing count of `pts` against one closed polygon (the
+    contribution to the nonzero-winding-number test)."""
     p = np.asarray(poly, float)
     if np.hypot(*(p[0] - p[-1])) > 1e-9:
         p = np.vstack([p, p[0]])
     x, y = pts[:, 0][:, None], pts[:, 1][:, None]
     x0, y0 = p[:-1, 0][None, :], p[:-1, 1][None, :]
     x1, y1 = p[1:, 0][None, :], p[1:, 1][None, :]
-    straddle = (y0 > y) != (y1 > y)
+    upward = (y0 <= y) & (y1 > y)
+    downward = (y1 <= y) & (y0 > y)
     with np.errstate(divide='ignore', invalid='ignore'):
         xint = x0 + (y - y0) * (x1 - x0) / (y1 - y0)
-    return (straddle & (x < xint)).sum(axis=1) % 2 == 1
+    right = x < xint
+    return (upward & right).sum(axis=1) - (downward & right).sum(axis=1)
 
 
 def resample_closed(poly, step):
@@ -56,11 +69,12 @@ def resample_closed(poly, step):
 
 
 def inside_mask(polys, pts):
-    """Even-odd point-in-shape over all contours."""
-    inside = np.zeros(len(pts), bool)
+    """Nonzero-winding point-in-shape over all contours (TrueType-spec
+    correct -- see the WINDING RULE note in the module docstring)."""
+    winding = np.zeros(len(pts), int)
     for poly in polys:
-        inside ^= _contains(poly, pts)
-    return inside
+        winding += _winding(poly, pts)
+    return winding != 0
 
 
 def vector_medial_axis(polys, step, theta_deg=70.0):
