@@ -1,5 +1,13 @@
 # Tracer quality plan — implementation specs for the remaining concept bets
 
+> **Partly superseded (2026-07-25)** by
+> [tracer_math_plan.md](tracer_math_plan.md), which replaces the tuned
+> thresholds with measurable quantities. In short: **P1** is absorbed into
+> that plan's C1 (its standalone width-ratio constant measured below EB
+> Garamond's natural variation), **P2** is superseded by its B2 (ray-cast
+> widths against the exact outline), **P3** is promoted into that same B2.
+> **P4 and the post-re-trace checklist below are unaffected and still live.**
+
 Written 2026-07-05, after the code/concept review
 ([code_concept_review.md](code_concept_review.md)) whose action list is
 otherwise complete. These are the four remaining items, specced at

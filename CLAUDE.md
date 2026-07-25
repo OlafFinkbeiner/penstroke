@@ -35,6 +35,9 @@ src/penstroke/
 │   │                      parallel-edge collapse (with length-ratio guard)
 │   ├── outline.py         TTF Bézier outlines → polygons in canvas coords
 │   │                      (crisp underlay + outline-coverage QA)
+│   ├── nib.py             Closed-form pen recovery: one lstsq over
+│   │                      (tangent angle, width) gives nib angle,
+│   │                      contrast, thick/thin widths + R² confidence
 │   ├── strokes.py         trace_closed_loops (pure-cycle components that
 │   │                      produce no graph nodes; the tracer's orphan-
 │   │                      loop pass)
@@ -84,6 +87,11 @@ src/penstroke/
     ├── metrics.py         Coverage, stroke count match, has-strokes
     ├── glyph_image.py     Plain per-letter PNGs (input for vision-model QA)
     ├── spec_validate.py   Compare AI-derived spec.json vs traced output
+    ├── objective.py       THE decomposition score (reconstruction,
+    │                      continuation, parsimony, smoothness). Use it to
+    │                      compare two traces. NOTE: `total` is only valid
+    │                      within one skeleton configuration — across
+    │                      different pruning use `reconstruction`.
     ├── cascade.py         Layered geometric/outline/spec checks → Issue list
     ├── ocr.py             Tesseract-based recognition check
     └── report.py          Assemble metrics into report.md and metadata.json
@@ -114,6 +122,10 @@ scripts/batch_handwriting.py    Batch runner: every HANDWRITING family
 scripts/trace_sweep.py          Tracer regression sweep: trace a charset,
                                 dump counts/arclens, --compare two sweeps.
                                 RUN THIS before/after ANY tracer change.
+scripts/proto_vector_medial_axis.py  PROTOTYPE, not wired in: medial axis
+                                from the Bezier outline (Voronoi, no raster).
+                                Evidence for B0 in design/tracer_math_plan.md
+                                — resolution-invariant 40/40 vs raster 33/56.
 scripts/build_tops_graph.py     Builds penstroke_tops.hip; --make-hda
                                 packages it as the penstroke::tops HDA
 scripts/build_text_layout_hda.py Builds penstroke::text_layout HDA
@@ -260,11 +272,25 @@ fix the mechanism. Where to look:
    (pre-junction-first baseline: ~60% clean letters, issue catalog in
    design/epst_batch_qa.json). Also produces the over_split numbers
    that calibrate P1 below.
-2. **Residual issue classes**: over_split on heavy serif fonts and the
-   width-underestimate in tight curves now have implementation specs —
-   design/tracer_quality_plan.md P1 (width-continuity junction
-   pairing) and P2 (widths along the pixel walk). Follow the sweep
-   protocol there for any tracer change.
+2. **Residual issue classes**: over_split on heavy serif fonts — root cause
+   found and fixed 2026-07-25 (see design/tracer_math_plan.md "A0 revised"):
+   `prune_skeleton`'s length threshold and `prune_redundant_leaves`'
+   ink-coverage test were both deciding feature-vs-noise, and a
+   miscalibrated `TIP_CLEARANCE_SIGMAS` gate silently skipped the
+   ink-coverage test for its entire target population. Now
+   `prune_skeleton` is deliberately conservative (0.5) and defers that
+   judgment to `prune_redundant_leaves`. Still architecturally unsettled:
+   three separate hand-set pruning mechanisms (σ-blur, length threshold,
+   disk-coverage) doing overlapping jobs — B0/C2 in tracer_math_plan.md
+   propose collapsing them into one λ/θ-medial-axis filtration with a
+   stability theorem instead of tuned constants; not started, and it's a
+   large rewrite with open risks (winding rules, texture fonts) — read
+   that section before starting it. The width-underestimate in tight
+   curves still has its old spec at design/tracer_quality_plan.md P2,
+   now itself superseded by tracer_math_plan.md B2 (subsumed by B0 if
+   that lands). Follow the sweep protocol in tracer_math_plan.md for any
+   tracer change — the resolution-invariance check is the stronger
+   tripwire.
 3. **Houdini integration: phase 4 remainder.** Phases 1-3 of
    design/hfont_houdini_plan.md are done (hfont standard, layout
    engine + text_layout HDA, strokes rep, handwriting demo), and the
@@ -280,11 +306,19 @@ fix the mechanism. Where to look:
    automatically, but producing `spec.json` requires running the
    vision-agent fan-out by hand (in-session workflow). Could become a
    CLI step.
-6. **Pen-width analysis for the strokes.** Per-stroke widths currently
-   come straight from the distance transform. Analyze them to
-   characterize the pen — nominal width, contrast/modulation (thick vs
-   thin), likely nib angle — for better width modelling, width cleanup,
-   and/or font classification.
+6. ~~**Pen-width analysis for the strokes.**~~ **DONE** — `core/nib.py`
+   fits an elliptical nib in closed form; the result lands in
+   `metadata.json` under `pen` (angle, contrast, thick/thin, R²). Widths
+   themselves still come from the distance transform — replacing that
+   with an outline ray-cast is B2/B0 in design/tracer_math_plan.md.
+
+7. **Scale-freeness is now load-bearing.** Every length in tracer.py is a
+   multiple of `W = glyph_scale(skel, dist)` (the glyph's own stroke
+   width) — see the SCALE block at the top of the file. The ONE
+   exception is `TIP_CLEARANCE_SIGMAS`, which measures blur-induced
+   corner rounding and therefore scales with `SKELETON_SIGMA`, not `W`.
+   Adding a bare pixel constant re-introduces the resolution bug that
+   A0/A1 fixed (invariance 58/84 → 69/84); express it in `W` instead.
 
 ## External dependencies
 

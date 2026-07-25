@@ -277,6 +277,14 @@ def trace_font(
             trace_params['pad'] = canvas_pad
         if letters_from_charset:
             trace_params['charset'] = charset
+        # Recover the pen that drew this font: one least-squares fit over
+        # every (tangent angle, width) sample in the trace. Cheap, and it
+        # carries its own confidence (r2) so consumers can tell a real
+        # broad-nib face from a monoline one.
+        from penstroke.core.nib import fit_nib
+        all_strokes = [s for _ch, (_m, t) in traced_per_letter.items()
+                       for s in t]
+        pen = fit_nib(all_strokes)
         metadata = build_metadata_json(
             font_name=font_name,
             font_file=f'source/{os.path.basename(ttf_path)}',
@@ -287,6 +295,7 @@ def trace_font(
             upem=upem,
             filename_fn=safe_filename,
             trace_params=trace_params,
+            pen=pen,
         )
         with open(os.path.join(output_dir, 'metadata.json'), 'w', encoding='utf-8') as f:
             f.write(metadata)

@@ -34,13 +34,12 @@ the legacy Hershey tracer's output.
 
 import math
 from dataclasses import dataclass
-from typing import Tuple
 
 import numpy as np
 import networkx as nx
 
 from penstroke.core.rasterize import rasterize_glyph
-from penstroke.core.skeleton import skeletonize
+from penstroke.core.skeleton import skeletonize, SKELETON_SIGMA
 from penstroke.core.graph import (
     skeleton_to_graph, merge_nearby_junctions, collapse_parallel_edges,
     fill_path_gaps,
@@ -53,16 +52,53 @@ from penstroke.core.smoothing import smooth_and_wobble
 # Tuning constants (the only knobs the algorithm exposes).
 # ---------------------------------------------------------------------------
 
-MIN_WALK_LEN_PX = 6.0           # drop walks shorter than this (skeleton noise)
-MIN_COMPONENT_LEN_PX = 4.0      # drop components shorter than this entirely
+# ---------------------------------------------------------------------------
+# SCALE. Every length below is a multiple of W, the glyph's OWN stroke width
+# (W = 2 * median distance-transform value along its skeleton). Absolute
+# pixel constants silently re-tune with both font weight and raster size —
+# measured, W spans 18.9px to 39.3px across the 6-font set at size=384, so a
+# single pixel constant means a 2x different thing per font, and a 4x
+# different thing between 384px and 1536px. The multipliers here were chosen
+# to reproduce the previous absolute values at the 6-font median W of 27.1px,
+# so this is a reparameterization, not a retune.
+# ---------------------------------------------------------------------------
+
+MIN_WALK_LEN_W = 0.22           # drop walks shorter than this (skeleton noise)
+MIN_COMPONENT_LEN_W = 0.15      # drop components shorter than this entirely
+MERGE_RADIUS_W = 0.81           # junction-cluster merge radius
+TANGENT_WINDOW_W = 0.74         # look-ahead for end tangents at a junction
+Y_BAND_W = 2.22                 # y-band height for multi-row ordering
+CAP_FLOOR_W2 = 0.0123           # area floor for the redundant-leaf prune
+
+# The one length that is NOT in units of W: a corner branch's tip clearance
+# measures blur-induced corner rounding, so it scales with SKELETON_SIGMA.
+# Measured directly (see design/tracer_math_plan.md and the A0 follow-up):
+# genuine corner-blur tip distance runs 5-8px on Arvo at 384px (3.3-5.3
+# sigmas at SKELETON_SIGMA=1.5). The previous value (3.0 -> 4.5px) sat BELOW
+# that whole range, so prune_redundant_leaves' tip-clearance gate excluded
+# every real corner-artifact candidate instead of admitting them for its
+# ink-coverage test — the gate was silently disabling the mechanism it
+# exists to feed. 6.0 covers the measured range with margin.
+TIP_CLEARANCE_SIGMAS = 6.0
 
 # Inter-component ordering: tiny components below this fraction of the median
 # component length are dots/tittles and get pushed to the end of the order.
+# Dimensionless — already scale-free.
 SMALL_FRAC = 0.30
 
-# y-band height for ordering across multi-row glyphs (rare in single chars,
-# but matters for accents that sit above the body).
-Y_BAND_PX = 60
+
+def glyph_scale(skel, dist_map):
+    """W — the glyph's own stroke width, the unit every length is in.
+
+    Falls back to a small positive number for degenerate skeletons so
+    callers never divide by zero.
+    """
+    if skel is not None and np.any(skel):
+        w = float(np.median(dist_map[skel])) * 2.0
+        if w > 1e-6:
+            return w
+    d = dist_map[dist_map > 0]
+    return float(np.median(d)) * 2.0 if d.size else 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -157,7 +193,7 @@ def _reorder_scrambled_path(path, u):
     return ordered
 
 
-def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
+def prune_redundant_leaves(G, dist_map, mask, max_passes=3, scale=None):
     """Remove leaf branches that the pen doesn't need — threshold-free.
 
     The medial axis transform reconstructs the glyph exactly as the
@@ -192,18 +228,18 @@ def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
     Pruning can expose new leaves (a junction dropping to degree 1),
     so iterate to a fixpoint, capped at `max_passes`.
     """
+    W = glyph_scale(None, dist_map) if scale is None else scale
     CAP_CORNER_COEFF = 0.5          # ≥ (2 − π/2) ≈ 0.43, the square-cap
                                     # uncovered-area bound, with slack
-    ABS_FLOOR_PX2 = 9.0             # sub-visible at render scale; guards
-                                    # hairline strokes where r² → 0
-    TIP_CLEARANCE_MAX = 4.5         # a corner branch terminates AT a
-                                    # boundary corner, so its free tip's
-                                    # distance-transform value is bounded
-                                    # by the corner rounding from the σ=1.5
-                                    # boundary smoothing (≈ 3σ) — a raster
-                                    # property, independent of stroke
-                                    # weight. A real feature's branch ends
-                                    # with the feature's own half-width.
+    area_floor = CAP_FLOOR_W2 * W * W   # sub-visible at render scale; guards
+                                        # hairline strokes where r² → 0
+    # A corner branch terminates AT a boundary corner, so its free tip's
+    # distance-transform value is bounded by the corner ROUNDING left by the
+    # boundary smoothing (≈ 3σ). That is a property of the blur kernel, not
+    # of stroke weight, so this one scales with SKELETON_SIGMA and NOT with
+    # W — see the note on SKELETON_SIGMA in core/skeleton.py. A real
+    # feature's branch instead ends with the feature's own half-width.
+    tip_clearance_max = TIP_CLEARANCE_SIGMAS * SKELETON_SIGMA
     COVER_EPS = 0.5                 # pixel-quantisation slack on disk radii
 
     H, W = mask.shape
@@ -236,7 +272,7 @@ def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
             # Tip-clearance gate: only branches that actually run INTO a
             # boundary corner are cap-fork candidates. Real features
             # (crossbars, slab caps, arms) end with their own half-width.
-            if float(dist_map[int(tip[0]), int(tip[1])]) > TIP_CLEARANCE_MAX:
+            if float(dist_map[int(tip[0]), int(tip[1])]) > tip_clearance_max:
                 continue
             branch = [tuple(p) for p in path if tuple(p) != tuple(jct)]
             if not branch:
@@ -286,7 +322,7 @@ def prune_redundant_leaves(G, dist_map, mask, max_passes=3):
             # Floor scales with the parent's local half-width at the
             # junction — see the cap-corner bound in the docstring.
             r_j = float(dist_map[int(jct[0]), int(jct[1])])
-            floor = max(ABS_FLOOR_PX2, CAP_CORNER_COEFF * r_j * r_j)
+            floor = max(area_floor, CAP_CORNER_COEFF * r_j * r_j)
             if exclusive_px2 <= floor:
                 G.remove_edge(u, v, key=k)
                 pruned_any = True
@@ -308,7 +344,7 @@ PRUNE_MAX_EDGES = 100   # above this many skeleton edges, skip the
                         # as extra short strokes, which suits them.
 
 
-def build_annotated_graph(skel, dist_map, mask=None):
+def build_annotated_graph(skel, dist_map, mask=None, scale=None):
     """Build the cleaned skeleton multigraph with arc-length + tangent edge
     annotations.
 
@@ -334,8 +370,9 @@ def build_annotated_graph(skel, dist_map, mask=None):
          skeleton are centerline scaffolding, not features — see
          prune_redundant_leaves.
     """
+    W = glyph_scale(skel, dist_map) if scale is None else scale
     G = skeleton_to_graph(skel)
-    G = merge_nearby_junctions(G, max_dist=22)
+    G = merge_nearby_junctions(G, max_dist=MERGE_RADIUS_W * W)
 
     # --- Hygiene pass 1: repair scrambled paths ----------------------
     for u, v, k, d in list(G.edges(keys=True, data=True)):
@@ -368,7 +405,7 @@ def build_annotated_graph(skel, dist_map, mask=None):
     # is O(leaves x window) and would cost 10s+ on a glyph with hundreds
     # of spur leaves. Ordinary glyphs are far below the cap, so unchanged.
     if mask is not None and G.number_of_edges() <= PRUNE_MAX_EDGES:
-        prune_redundant_leaves(G, dist_map, mask)
+        prune_redundant_leaves(G, dist_map, mask, scale=W)
 
     G = collapse_parallel_edges(G, dist_map)
     for u, v, k, d in list(G.edges(keys=True, data=True)):
@@ -383,28 +420,10 @@ def build_annotated_graph(skel, dist_map, mask=None):
 @dataclass
 class ComponentSpec:
     subgraph: nx.MultiGraph
-    odd_vertices: list
-    betti: int
-    topology_class: str
-    bbox: Tuple[int, int, int, int]   # (ymin, xmin, ymax, xmax)
     total_length: float
 
 
-def _classify(odd, betti, Gc):
-    if not odd and betti == 1:
-        return 'CLOSED_LOOP'
-    if not odd and betti >= 2:
-        return 'MULTI_LOOP'
-    if len(odd) == 2 and betti == 0:
-        return 'OPEN_LINE'
-    if len(odd) == 2 and betti >= 1:
-        return 'LINE_WITH_LOOP'
-    if len(odd) >= 4 and betti == 0:
-        return 'TREE'
-    return 'MIXED'
-
-
-def split_components(G, skel):
+def split_components(G, skel, scale):
     """Split annotated graph into ComponentSpec list; also identify orphan
     closed loops that produced no graph nodes (pure cycles like 'o')."""
     components = []
@@ -412,21 +431,10 @@ def split_components(G, skel):
         Gc = G.subgraph(nodes).copy()
         if Gc.number_of_edges() == 0:
             continue
-        odd = [n for n in Gc.nodes if Gc.degree(n) % 2 == 1]
-        betti = Gc.number_of_edges() - Gc.number_of_nodes() + 1
-        ys = [n[0] for n in Gc.nodes]
-        xs = [n[1] for n in Gc.nodes]
         total = sum(d['length'] for _, _, d in Gc.edges(data=True))
-        if total < MIN_COMPONENT_LEN_PX:
+        if total < MIN_COMPONENT_LEN_W * scale:
             continue
-        components.append(ComponentSpec(
-            subgraph=Gc,
-            odd_vertices=odd,
-            betti=betti,
-            topology_class=_classify(odd, betti, Gc),
-            bbox=(min(ys), min(xs), max(ys), max(xs)),
-            total_length=total,
-        ))
+        components.append(ComponentSpec(subgraph=Gc, total_length=total))
     # Orphan loops: skeleton components whose pixels the graph does NOT
     # carry — pure cycles with no nodes ('o'), plus loops whose edge was
     # dropped during graph hygiene. Components the graph covers are
@@ -465,17 +473,8 @@ def split_components(G, skel):
 MAX_CONTINUATION_TURN_DEG = 75.0   # max turn angle for two edge-ends to
                                    # count as one continuing pen motion
 
-# Above this junction degree the exhaustive pairing search (which is
-# super-exponential in degree) is replaced by a greedy one. Normal
-# glyphs almost never exceed degree ~6; only pathological textured fonts
-# (Rubik Distressed/Maps/...) produce very high-degree spur junctions
-# that would otherwise hang analyze_junctions for tens of seconds. At or
-# below this degree the exhaustive search runs unchanged, so ordinary
-# fonts are byte-for-byte identical.
-MAX_EXHAUSTIVE_DEGREE = 8
 
-
-def _edge_ends_at(G, v):
+def _edge_ends_at(G, v, tangent_window):
     """All edge-ends incident to node v.
 
     Returns a list of dicts: {eid: (u, v, k), side: 0|1, tangent: vec}
@@ -501,13 +500,15 @@ def _edge_ends_at(G, v):
             # Normal edge: exactly one matches. Self-loop: both match.
             if tuple(path[0]) == vt:
                 # Outward tangent from path start: direction path[0]→inward.
-                t = np.asarray(path[min(20, len(path) - 1)], dtype=float) \
+                t = np.asarray(path[min(tangent_window, len(path) - 1)],
+                               dtype=float) \
                     - np.asarray(path[0], dtype=float)
                 n_ = np.linalg.norm(t)
                 ends.append({'eid': eid, 'side': 0,
                              'tangent': t / n_ if n_ > 0 else t})
             if tuple(path[-1]) == vt:
-                t = np.asarray(path[max(0, len(path) - 1 - 20)], dtype=float) \
+                t = np.asarray(path[max(0, len(path) - 1 - tangent_window)],
+                               dtype=float) \
                     - np.asarray(path[-1], dtype=float)
                 n_ = np.linalg.norm(t)
                 ends.append({'eid': eid, 'side': 1,
@@ -528,84 +529,56 @@ def _pair_score(t_a, t_b):
     return math.acos(d)
 
 
-def analyze_junctions(G):
+def analyze_junctions(G, scale):
     """Globally decide, for every node, which edge-ends continue into
     which.
 
     Returns dict: (eid, side) -> (eid, side) for every paired end.
     Unpaired ends are absent from the dict — they are stroke terminals.
 
-    At each node the pairing is chosen by exhaustive search over all
-    ways to pair up the ends (degree is small — rarely above 6),
-    minimising total turn angle, with pairs above
+    At each node the pairing minimises total turn angle, with pairs above
     MAX_CONTINUATION_TURN_DEG disallowed entirely. Leaving an end
     unpaired costs a fixed penalty slightly above the threshold so
     that two ends pair exactly when their turn is acceptable.
+
+    Solved exactly by maximum-weight matching (Blossom). For n ends and a
+    matching M, the cost is
+
+        Σ_M s_ij + U·(n − 2|M|)  =  n·U − Σ_M (2U − s_ij)
+
+    so minimising the cost is maximising Σ_M (2U − s_ij). Every allowed
+    pair has s ≤ max_turn and U = 1.05·max_turn, hence a weight of at
+    least 1.1·max_turn > 0 — all weights are positive, so plain
+    max-weight matching (no maxcardinality) gives the optimum.
+
+    This replaced a super-exponential exhaustive search plus a greedy
+    fallback for high-degree junctions. The greedy branch silently gave
+    up optimality on texture fonts; Blossom is exact at every degree and
+    polynomial, so the fallback is gone.
     """
     max_turn = math.radians(MAX_CONTINUATION_TURN_DEG)
     unpaired_cost = max_turn * 1.05
+    # Tangent look-ahead in pixels, from the glyph's own stroke width.
+    tangent_window = max(3, int(round(TANGENT_WINDOW_W * scale)))
     pairing = {}
 
     for v in G.nodes:
-        ends = _edge_ends_at(G, v)
+        ends = _edge_ends_at(G, v, tangent_window)
         n = len(ends)
         if n < 2:
             continue
 
-        # Precompute pair scores; None = disallowed.
-        score = {}
+        # Build the matching graph: one node per end, one edge per
+        # ALLOWED pair, weighted so that max-weight == min-turn (see
+        # the reduction in the docstring).
+        M = nx.Graph()
+        M.add_nodes_from(range(n))
         for i in range(n):
             for j in range(i + 1, n):
                 s = _pair_score(ends[i]['tangent'], ends[j]['tangent'])
-                score[(i, j)] = s if s <= max_turn else None
-
-        if n <= MAX_EXHAUSTIVE_DEGREE:
-            # Exhaustive best pairing over the index set.
-            best = {'cost': None, 'pairs': []}
-
-            def search(remaining, pairs, cost):
-                if cost is not None and best['cost'] is not None \
-                        and cost >= best['cost']:
-                    return
-                if not remaining:
-                    if best['cost'] is None or cost < best['cost']:
-                        best['cost'] = cost
-                        best['pairs'] = list(pairs)
-                    return
-                i = remaining[0]
-                rest = remaining[1:]
-                # Option: leave i unpaired.
-                search(rest, pairs, cost + unpaired_cost)
-                # Option: pair i with each j.
-                for j in rest:
-                    s = score.get((min(i, j), max(i, j)))
-                    if s is None:
-                        continue
-                    rest2 = [x for x in rest if x != j]
-                    pairs.append((i, j))
-                    search(rest2, pairs, cost + s)
-                    pairs.pop()
-
-            search(list(range(n)), [], 0.0)
-            chosen = best['pairs']
-        else:
-            # Greedy fallback for very high-degree junctions: take the
-            # allowed pairs cheapest (smoothest) first, never reusing an
-            # end. Every allowed pair beats leaving both ends unpaired (an
-            # allowed score <= max_turn < unpaired_cost), so greedy only
-            # forgoes optimality of WHICH smooth pairs win — immaterial at
-            # the spur-tangle junctions this guards, and it turns a
-            # multi-second (or hanging) search into microseconds.
-            chosen = []
-            used = set()
-            for s, pi, pj in sorted((sc, a, b)
-                                    for (a, b), sc in score.items()
-                                    if sc is not None):
-                if pi in used or pj in used:
-                    continue
-                used.add(pi)
-                used.add(pj)
-                chosen.append((pi, pj))
+                if s <= max_turn:
+                    M.add_edge(i, j, weight=2.0 * unpaired_cost - s)
+        chosen = nx.max_weight_matching(M)
 
         for (i, j) in chosen:
             a = (ends[i]['eid'], ends[i]['side'])
@@ -726,29 +699,162 @@ def _orient_walk_for_writing(w):
     return w
 
 
-def order_all_walks(walks_with_bbox_len):
-    """Sort walks across components into a natural drawing order.
+# Cost, in units of W, charged for orienting a walk against the writing
+# convention. Scaled by how strongly the walk is axis-aligned, so a clearly
+# vertical stem is effectively pinned top-to-bottom while a diagonal or an
+# ambiguous blob is free for the optimiser to flip.
+CONVENTION_PENALTY_W = 3.0
+
+# Above this many walks in one band, Held-Karp (O(2^n n^2)) is replaced by
+# a greedy nearest-next walk. Real glyphs sit far below it.
+MAX_EXACT_ORDER = 10
+
+
+def _walk_axis_bias(w):
+    """(prefers_reverse, strength) for the writing convention.
+
+    strength is 0 for a walk with no clear axis and 1 for a fully
+    axis-aligned one, so the penalty fades out exactly where the
+    convention stops meaning anything.
+    """
+    arr = np.asarray(w, dtype=float)
+    dy = arr[-1, 0] - arr[0, 0]
+    dx = arr[-1, 1] - arr[0, 1]
+    if abs(dy) >= abs(dx):
+        span = abs(dy) + abs(dx)
+        strength = abs(dy) / span if span > 0 else 0.0
+        return (dy < 0), strength     # vertical wants top-to-bottom
+    span = abs(dy) + abs(dx)
+    strength = abs(dx) / span if span > 0 else 0.0
+    return (dx < 0), strength         # horizontal wants left-to-right
+
+
+def _order_band(walks, start_xy, scale):
+    """Choose order AND orientation for one band of walks.
+
+    Minimises total pen-up travel from `start_xy`, plus a convention
+    penalty per reversed walk. Exact via Held-Karp over
+    (visited, last, orientation); greedy above MAX_EXACT_ORDER.
+
+    Returns (ordered_oriented_walks, end_xy, travel).
+    """
+    n = len(walks)
+    if n == 0:
+        return [], start_xy, 0.0
+
+    # endpoints[i][o] = (start_point, end_point, penalty) for orientation o
+    ends = []
+    for w in walks:
+        rev_pref, strength = _walk_axis_bias(w)
+        pen = CONVENTION_PENALTY_W * scale * strength
+        fwd = (np.asarray(w[0], float), np.asarray(w[-1], float),
+               pen if rev_pref else 0.0)
+        bwd = (np.asarray(w[-1], float), np.asarray(w[0], float),
+               0.0 if rev_pref else pen)
+        ends.append((fwd, bwd))
+
+    def hop(p, q):
+        return float(np.hypot(p[0] - q[0], p[1] - q[1]))
+
+    if n > MAX_EXACT_ORDER:
+        # Greedy: repeatedly take the cheapest (walk, orientation).
+        remaining = set(range(n))
+        cur = np.asarray(start_xy, float)
+        order, travel = [], 0.0
+        while remaining:
+            best = min(((hop(cur, ends[i][o][0]) + ends[i][o][2], i, o)
+                        for i in remaining for o in (0, 1)),
+                       key=lambda t: (t[0], t[1], t[2]))
+            _c, i, o = best
+            travel += hop(cur, ends[i][o][0])
+            order.append((i, o))
+            cur = ends[i][o][1]
+            remaining.discard(i)
+    else:
+        # Held-Karp over (visited mask, last walk, last orientation).
+        INF = float('inf')
+        full = 1 << n
+        dp = [[[INF, None] for _ in range(2)] for _ in range(n)]
+        best = {}
+        for i in range(n):
+            for o in (0, 1):
+                c = hop(start_xy, ends[i][o][0]) + ends[i][o][2]
+                best[(1 << i, i, o)] = (c, None)
+        for mask in range(full):
+            for i in range(n):
+                if not mask & (1 << i):
+                    continue
+                for o in (0, 1):
+                    cur = best.get((mask, i, o))
+                    if cur is None or cur[0] == INF:
+                        continue
+                    for j in range(n):
+                        if mask & (1 << j):
+                            continue
+                        for p in (0, 1):
+                            nc = (cur[0] + hop(ends[i][o][1], ends[j][p][0])
+                                  + ends[j][p][2])
+                            key = (mask | (1 << j), j, p)
+                            if key not in best or nc < best[key][0]:
+                                best[key] = (nc, (mask, i, o))
+        endk = min((k for k in best if k[0] == full - 1),
+                   key=lambda k: (best[k][0], k[1], k[2]))
+        chain = []
+        k = endk
+        while k is not None:
+            chain.append((k[1], k[2]))
+            k = best[k][1]
+        order = list(reversed(chain))
+        travel = 0.0
+        cur = np.asarray(start_xy, float)
+        for (i, o) in order:
+            travel += hop(cur, ends[i][o][0])
+            cur = ends[i][o][1]
+
+    out = [walks[i] if o == 0 else walks[i][::-1] for (i, o) in order]
+    end_xy = ends[order[-1][0]][order[-1][1]][1]
+    return out, end_xy, travel
+
+
+def order_all_walks(walks_with_bbox_len, scale):
+    """Order walks into a natural drawing order, choosing direction jointly.
 
     Input: list of (walk, bbox=(ymin,xmin,ymax,xmax), total_len) tuples.
     Returns the walks in final order, each oriented for writing.
+
+    Convention CONSTRAINS, optimisation fills the remaining freedom. The
+    outer structure is unchanged and non-negotiable — dots and tittles
+    last, top y-band before bottom — because those encode how people
+    actually write, and a pure travel minimisation would happily draw an
+    'E' bottom-up. Within a band, order and per-walk direction are chosen
+    together to minimise pen-up travel (plus a convention penalty that
+    fades out for non-axis-aligned walks).
+
+    Previously the two decisions were independent: `order_all_walks` was a
+    5-key sort and `_orient_walk_for_writing` forced axis directions with
+    no reference to where the previous stroke ended, so the pen
+    teleported between strokes.
     """
     if not walks_with_bbox_len:
         return []
     median_len = float(np.median([t for (_, _, t) in walks_with_bbox_len]))
+    band_h = max(1.0, Y_BAND_W * scale)
 
-    def key(entry):
-        w, bbox, tot = entry
-        ymin, xmin, ymax, xmax = bbox
+    groups = {}
+    for (w, bbox, tot) in walks_with_bbox_len:
         is_tiny = 1 if tot < SMALL_FRAC * median_len else 0
-        band = ymin // Y_BAND_PX
-        warr = np.asarray(w)
-        wymin, wymax = warr[:, 0].min(), warr[:, 0].max()
-        wxmin, wxmax = warr[:, 1].min(), warr[:, 1].max()
-        is_vertical = 1 if (wymax - wymin) > 1.2 * (wxmax - wxmin) else 0
-        return (is_tiny, band, -is_vertical, wxmin, wymin)
+        groups.setdefault((is_tiny, bbox[0] // band_h), []).append(w)
 
-    sorted_entries = sorted(walks_with_bbox_len, key=key)
-    return [_orient_walk_for_writing(w) for (w, _, _) in sorted_entries]
+    # Pen enters the glyph at its top-left — the conventional start.
+    allpts = np.concatenate([np.asarray(w, float)
+                             for (w, _, _) in walks_with_bbox_len])
+    pen = np.array([allpts[:, 0].min(), allpts[:, 1].min()], dtype=float)
+
+    ordered = []
+    for key in sorted(groups):
+        band_walks, pen, _travel = _order_band(groups[key], pen, scale)
+        ordered.extend(band_walks)
+    return ordered
 
 
 # ---------------------------------------------------------------------------
@@ -827,15 +933,16 @@ def trace_glyph_eulerian(font_path, char, size=384, seed=1):
         skel, dist = skeletonize(main_mask)
 
     ink = main_mask if dot_taps else mask
-    G = build_annotated_graph(skel, dist, mask=ink)
-    components, orphan_loops = split_components(G, skel)
+    W = glyph_scale(skel, dist)
+    G = build_annotated_graph(skel, dist, mask=ink, scale=W)
+    components, orphan_loops = split_components(G, skel, W)
 
     # Junction-first decomposition: analyse ALL junctions globally
     # (pair edge-ends by tangent continuation), then mechanically follow
     # the pairings into chains. No greedy walking, no consumed-edge
     # corners, and multi-stroke letters (H, A, E) split naturally at
     # junctions where the geometry doesn't continue.
-    pairing = analyze_junctions(G)
+    pairing = analyze_junctions(G, W)
 
     entries = []
     for spec in components:
@@ -844,7 +951,7 @@ def trace_glyph_eulerian(font_path, char, size=384, seed=1):
         walks = [_orient_clockwise_if_closed(w) if (w and w[0] == w[-1])
                  else w for w in walks]
         for w in walks:
-            if len(w) < 2 or _polyline_length(w) < MIN_WALK_LEN_PX:
+            if len(w) < 2 or _polyline_length(w) < MIN_WALK_LEN_W * W:
                 continue
             arr = np.asarray(w)
             bbox = (int(arr[:, 0].min()), int(arr[:, 1].min()),
@@ -860,7 +967,7 @@ def trace_glyph_eulerian(font_path, char, size=384, seed=1):
                 int(arr[:, 0].max()), int(arr[:, 1].max()))
         entries.append((w, bbox, _polyline_length(w)))
 
-    ordered = order_all_walks(entries)
+    ordered = order_all_walks(entries, W)
 
     # Convert each walk (pixel list) into the (xs, ys, widths) smoothed
     # form via the shared smoothing module.

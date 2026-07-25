@@ -121,7 +121,7 @@ def build_report(font_name, per_letter_results):
 
 def build_metadata_json(font_name, font_file, license_id, per_letter_results,
                        canvas_dims, baseline_y, upem,
-                       filename_fn=None, trace_params=None):
+                       filename_fn=None, trace_params=None, pen=None):
     """Build the machine-readable metadata.json for a font's output folder.
 
     Args:
@@ -134,6 +134,10 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
             live in the canvas defined by size/pad, so every later
             consumer (export/import-corel, sync-edits, the hfont rep
             builders) reads them from here instead of assuming defaults.
+        pen: recovered nib parameters from core.nib.fit_nib (angle,
+            contrast, thick/thin widths, R^2), recorded under the 'pen'
+            key. Read `r2` before trusting the rest — a monoline font has
+            no nib to recover and correctly scores near zero.
     """
     if filename_fn is None:
         def filename_fn(c):
@@ -179,4 +183,6 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
     }
     if trace_params:
         data['trace'] = trace_params
+    if pen:
+        data['pen'] = pen
     return json.dumps(data, indent=2)
