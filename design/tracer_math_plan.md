@@ -140,7 +140,7 @@ prototype worth carrying forward:
 | B1 nib recovery | **done** | contrast order correct on 6 fonts; exact inversion in unit tests |
 | C0 objective | **done** | ranks post-fix above pre-fix on **39/44** fonts, uniform weights |
 | C3 joint order/orientation | **done** | pen-up travel **−42.8%** across 6 fonts × 62 glyphs |
-| B0 vector medial axis | **not started** | prototype + gate exist; substrate swap not attempted |
+| B0 vector medial axis | **de-risked, not integrated** | winding rule + overlap seams fixed and verified; near-degenerate noise root-caused but unfixed; graduated to `core/vector_skeleton.py` with tests, NOT wired into `skeletonize()`/the tracer -- see below |
 | C1 Euler-spiral pairing | **not started** | gated on C0, which now exists |
 | C2 λ/θ filtration | **not started** | |
 
@@ -433,6 +433,28 @@ Scale of the bug: small (sub-pixel to a few pixels, only manifests at
 stroke widths approaching the sample step — i.e. hairline/thin weights).
 Whoever picks this up next: render the graph before trusting topology
 counts, the first pass here didn't and reached a wrong conclusion.
+
+**Graduated to real code, 2026-07-25.** With winding rule and overlap
+seams fixed, the prototype moved from `scripts/proto_vector_medial_axis.py`
+into `src/penstroke/core/vector_skeleton.py` — a real, tested module
+(`tests/test_vector_skeleton.py`: synthetic overlap/winding-rule cases with
+known-correct answers, plus resolution-invariance on the Caveat fixture),
+not a scratch script. `proto_vector_medial_axis.py` now just imports it and
+keeps the FONTS/CHARS/SIZES report harness. `shapely` stays a **dev-only**
+dependency (`pyproject.toml`) — nothing in the shipped pipeline imports
+`vector_skeleton`, so `penstroke trace` is unaffected.
+
+**Still NOT integrated.** `glyph_vector_skeleton()` returns a `networkx`
+graph over float em-space Voronoi vertices; `skeletonize()` returns a raster
+pixel array. Everything downstream of `skeletonize()` in `tracer.py`
+(`skeleton_to_graph`, the scrambled-path/duplicate-edge hygiene passes,
+`analyze_junctions`, `prune_redundant_leaves`) is built around the raster
+interface and would need real restructuring to consume the vector graph
+directly — a separate, larger task, not attempted here. Wiring this in as
+the default is also blocked on the unresolved near-degenerate-noise risk
+above: swapping it in now would silently regress hairline/thin-stroke
+fonts that the current raster+A0 pipeline handles correctly (if not
+provably resolution-invariant).
 
 ### B1. Recover the pen — closed-form, per font
 

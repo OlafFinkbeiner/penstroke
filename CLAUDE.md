@@ -41,7 +41,12 @@ src/penstroke/
 │   ├── strokes.py         trace_closed_loops (pure-cycle components that
 │   │                      produce no graph nodes; the tracer's orphan-
 │   │                      loop pass)
-│   └── smoothing.py       spline fit, per-point widths, OU-process wobble, taper
+│   ├── smoothing.py       spline fit, per-point widths, OU-process wobble, taper
+│   └── vector_skeleton.py Medial axis straight from the Bézier outline
+│                          (Voronoi, no raster) — B0 in tracer_math_plan.md.
+│                          NOT wired into skeletonize()/the tracer; real,
+│                          tested code but a standalone alternate path.
+│                          Needs shapely (dev-only dependency).
 │
 ├── tracer.py              THE tracer — junction-first graph decomposition.
 │                          See module docstring for the full pipeline.
@@ -111,10 +116,15 @@ design/                    Active design docs
 ├── code_concept_review.md Full code+concept review (2026-07) with the
 │                          action list — items 1-10 done; concept bets
 │                          remain
-└── tracer_quality_plan.md Implementation specs for the remaining
-                           concept bets (width-continuity pairing,
-                           width sampling, vector reprojection, store
-                           key migration) + post-re-trace checklist
+├── tracer_quality_plan.md Implementation specs for the remaining
+│                          concept bets (width-continuity pairing,
+│                          width sampling, vector reprojection, store
+│                          key migration) + post-re-trace checklist —
+│                          partly superseded by tracer_math_plan.md
+└── tracer_math_plan.md    THE live tracer design doc: resolution-
+                           invariance measurements, the A0-A3/B0-B2/C0-C4
+                           plan, and dated findings as work lands. Read
+                           this before any tracer or vector_skeleton change.
 
 scripts/batch_google_fonts.py   Small fixed demo batch (edit FONTS list)
 scripts/batch_handwriting.py    Batch runner: every HANDWRITING family
@@ -122,10 +132,11 @@ scripts/batch_handwriting.py    Batch runner: every HANDWRITING family
 scripts/trace_sweep.py          Tracer regression sweep: trace a charset,
                                 dump counts/arclens, --compare two sweeps.
                                 RUN THIS before/after ANY tracer change.
-scripts/proto_vector_medial_axis.py  PROTOTYPE, not wired in: medial axis
-                                from the Bezier outline (Voronoi, no raster).
-                                Evidence for B0 in design/tracer_math_plan.md
-                                — resolution-invariant 40/40 vs raster 33/56.
+scripts/proto_vector_medial_axis.py  Report harness (invariance table,
+                                theta sweep) for src/penstroke/core/
+                                vector_skeleton.py — the implementation
+                                lives there now, not in this script.
+                                Resolution-invariant 40/40 vs raster 33/56.
 scripts/build_tops_graph.py     Builds penstroke_tops.hip; --make-hda
                                 packages it as the penstroke::tops HDA
 scripts/build_text_layout_hda.py Builds penstroke::text_layout HDA
@@ -283,9 +294,14 @@ fix the mechanism. Where to look:
    three separate hand-set pruning mechanisms (σ-blur, length threshold,
    disk-coverage) doing overlapping jobs — B0/C2 in tracer_math_plan.md
    propose collapsing them into one λ/θ-medial-axis filtration with a
-   stability theorem instead of tuned constants; not started, and it's a
-   large rewrite with open risks (winding rules, texture fonts) — read
-   that section before starting it. The width-underestimate in tight
+   stability theorem instead of tuned constants. B0's prototype is now
+   real code (`core/vector_skeleton.py`): winding-rule and overlapping-
+   contour bugs found and fixed, a third risk (near-degenerate-contour
+   noise — near-coincident Voronoi vertices at pinches/blunt tips) found
+   and root-caused but NOT fixed (two merge heuristics tried, both had
+   worse side effects than the bug). Still not wired into `skeletonize()`/
+   the tracer — read tracer_math_plan.md's B0 section before attempting
+   that integration or the noise fix. The width-underestimate in tight
    curves still has its old spec at design/tracer_quality_plan.md P2,
    now itself superseded by tracer_math_plan.md B2 (subsumed by B0 if
    that lands). Follow the sweep protocol in tracer_math_plan.md for any
