@@ -142,7 +142,7 @@ prototype worth carrying forward:
 | C3 joint order/orientation | **done** | pen-up travel **−42.8%** across 6 fonts × 62 glyphs |
 | B0 vector medial axis | **de-risked, not integrated** | winding rule + overlap seams fixed and verified; near-degenerate noise root-caused but unfixed; graduated to `core/vector_skeleton.py` with tests, NOT wired into `skeletonize()`/the tracer -- see below |
 | C1 Euler-spiral pairing | **not started** | gated on C0, which now exists |
-| C2 λ/θ filtration | **not started** | |
+| C2 λ/θ filtration | **scoped 2026-07-25, not started** | formal definition + implementation plan written; a quick arc-length proxy tried and correctly discarded (didn't separate noise from real junctions either) -- see below |
 
 ### A0 — the factor, and a trap in the objective
 
@@ -574,6 +574,82 @@ the Voronoi axis, and the σ=1.5 blur disappears on its own. The measurement
 above says λ/θ handles *robustness* but not *feature significance*, so
 `prune_redundant_leaves`' exclusive-ink test survives as the second stage
 rather than being replaced.
+
+**Scoped 2026-07-25, not started.** Three ad-hoc merge-heuristic attempts at
+B0's near-degenerate-noise bug (see B0 above) all failed the same way —
+none could tell a genuinely distinct medial-axis branch apart from a
+spurious duplicate Qhull produces on near-degenerate input. This is the
+actual reason to build C2 for real rather than reach for a fourth
+heuristic: the formal λ-medial-axis significance test is defined precisely
+to make that distinction principled instead of tuned. Scoping it properly
+means being exact about the definition, because a quick proxy already
+failed once today (below) — the *correct* algorithm is not a drop-in
+one-liner.
+
+**The formal definition (Chazal-Lieutier):** for a medial-axis point `x`,
+let its *contact set* Γ(x) be the boundary points at exactly the minimum
+distance `r(x)` (not "nearby" points — the actual minimizers). λ(x) is
+(informally) the smallest extra radius you'd need to add to the ball at
+`x` before Γ(x)'s connected components, grown by that radius, merge into
+one — i.e. how much "slack" separates the ≥2 distinct boundary features
+`x` is equidistant from. A real corner/junction has large λ (its contact
+points belong to boundary regions that stay separate under a healthy
+radius of growth); a numerically-forced near-duplicate vertex has small λ
+(its contact points are already almost touching). Crucially this is a
+property of the **boundary**, evaluated through the ball-growth/merge
+process — not a property of the medial-axis graph's edges or the raw
+Euclidean/angular relationship between whichever samples happen to be
+Voronoi-ridge-incident to `x`.
+
+**A quick proxy was tried today and correctly discarded, not silently
+adopted.** Before writing this up, checked whether a cheap arc-length
+stand-in ("how far apart along the contour are this vertex's Voronoi-ridge
+governor samples") already fixes what angle (θ) can't, on BungeeHairline's
+`8` pinch — using `nx.cycle_basis` cycle size as ground truth for
+noise-cluster vs. real-bowl-junction nodes. Neither aggregation worked:
+widest-pair arc separation saturated to "different contour = infinite" for
+almost every vertex (real and noise alike) whenever *any* governor came
+from the other contour, and narrowest-pair arc separation was ≈1 sample
+step for **both** groups (noise median 1.0, real median 1.0) — because
+*any* Voronoi vertex, real or spurious, generically picks up some locally-
+adjacent sample as one of its ridge governors; that's a normal feature of
+Voronoi ridge structure, not evidence of degeneracy. **Conclusion: the
+governor set (`vor.ridge_points` incident to a vertex) is not the same
+thing as the true contact set Γ(x), and substituting one for the other —
+the shortcut both this proxy and the original θ computation take — is
+exactly why neither one is a reliable significance signal near degenerate
+input.** Getting Γ(x) right (true nearest-distance minimizers, within a
+numerical tolerance, not "whatever Qhull happened to link via a ridge")
+is the first real implementation task, before λ itself.
+
+**Implementation plan, in order:**
+1. Compute the true contact set per vertex: boundary samples within a
+   small tolerance of `r(x)` (the already-computed nearest distance),
+   scale-free relative to local sample step, not an absolute pixel epsilon.
+2. Implement the discrete λ via the Chaussard/Couprie/Talbot merge process
+   (union-find over boundary samples as the ball radius grows from `r(x)`
+   upward; λ(x) = the radius increment at which the contact set's
+   components first merge into one) rather than any single-pair distance
+   proxy.
+3. Validate λ alone (no θ) separates BungeeHairline `8`'s noise-cluster
+   nodes from its real bowl junctions with a clean gap, not just a
+   different-but-still-overlapping range — the bar the two proxies above
+   both failed to clear.
+4. Re-run the existing 40/40 resolution-invariance sweep on the 6-font/
+   8-char probe set — must not regress.
+5. Sweep λ's threshold for a wide flat plateau (the same evidence type
+   that validated θ's own [50°, 90°] plateau) — if there's no plateau,
+   λ is just a differently-shaped tuned constant, not a principled fix.
+6. Only then does replacing `prune_redundant_leaves`'s exclusive-ink test
+   or wiring into `skeletonize()`/the tracer become a live question — both
+   stay explicitly out of scope until 1-5 hold.
+
+**Non-goal for now:** this scoping only concerns the vector (B0) substrate.
+It does not resolve or touch the raster pipeline (`core/skeleton.py`,
+`tracer.py`'s σ/spur-length/ink-coverage stack), which stays exactly as it
+is — untouched and still the shipped default — until B0 itself is fully
+de-risked and integrated (a separate, larger, still-unscheduled task; see
+B0's own "still NOT integrated" note above).
 
 ### C3. Stroke order and direction as one optimization
 

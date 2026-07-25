@@ -298,11 +298,18 @@ fix the mechanism. Where to look:
    real code (`core/vector_skeleton.py`): winding-rule and overlapping-
    contour bugs found and fixed, a third risk (near-degenerate-contour
    noise — near-coincident Voronoi vertices at pinches/blunt tips) found
-   and root-caused but NOT fixed (two merge heuristics tried, both had
-   worse side effects than the bug). Still not wired into `skeletonize()`/
-   the tracer — read tracer_math_plan.md's B0 section before attempting
-   that integration or the noise fix. The width-underestimate in tight
-   curves still has its old spec at design/tracer_quality_plan.md P2,
+   and root-caused but NOT fixed (three merge heuristics tried across two
+   sessions, all had worse side effects than the bug, or just moved the
+   failure mode). C2 is now scoped for real (2026-07-25, tracer_math_plan.md):
+   the formal λ-medial-axis definition, why a quick arc-length proxy also
+   failed today (same root cause as the merge heuristics — conflating
+   "whatever sample a Voronoi ridge happens to touch" with the true
+   nearest-distance contact set), and a 6-step implementation/validation
+   plan — but zero implementation of the real algorithm exists yet. Still
+   not wired into `skeletonize()`/the tracer — read tracer_math_plan.md's
+   B0 and C2 sections before attempting that integration or the noise fix.
+   The width-underestimate in tight curves still has its old spec at
+   design/tracer_quality_plan.md P2,
    now itself superseded by tracer_math_plan.md B2 (subsumed by B0 if
    that lands). Follow the sweep protocol in tracer_math_plan.md for any
    tracer change — the resolution-invariance check is the stronger
