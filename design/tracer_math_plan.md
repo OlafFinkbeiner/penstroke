@@ -142,7 +142,7 @@ prototype worth carrying forward:
 | C3 joint order/orientation | **done** | pen-up travel **−42.8%** across 6 fonts × 62 glyphs |
 | B0 vector medial axis | **de-risked, not integrated** | winding rule + overlap seams fixed and verified; near-degenerate noise root-caused but unfixed; graduated to `core/vector_skeleton.py` with tests, NOT wired into `skeletonize()`/the tracer -- see below |
 | C1 Euler-spiral pairing | **not started** | gated on C0, which now exists |
-| C2 λ/θ filtration | **scoped 2026-07-25, not started** | formal definition + implementation plan written; a quick arc-length proxy tried and correctly discarded (didn't separate noise from real junctions either) -- see below |
+| C2 λ/θ filtration | **contact-set + real λ implemented and tested 2026-07-25** | plan for the *pruning* problem C2 targets is still sound and unstarted on that front; but λ tested against the B0 noise bug specifically and does NOT fix it -- that bug is vertex multiplicity, not low significance, a different problem -- see below |
 
 ### A0 — the factor, and a trap in the objective
 
@@ -446,10 +446,16 @@ neither is committed:**
    family of fix (cluster-then-reconnect, any bookkeeping variant) is the
    wrong tool for this bug.
 
-**Not fixed, three attempts in.** The right fix likely isn't a post-hoc
+**Not fixed, three attempts in.** ~~The right fix likely isn't a post-hoc
 merge heuristic at all — it's probably the same disease C2's λ/θ
-filtration is meant to cure (a single principled criterion instead of an
-ad-hoc distance threshold). Scale of the bug: small (sub-pixel to a few
+filtration is meant to cure~~ **— checked 2026-07-25 by actually
+implementing real λ (see C2 below): wrong guess.** λ scores this noise
+cluster as just as significant as genuine junctions, because it *is* —
+the bug is several redundant vertices approximating one true significant
+point, not a spurious low-significance one, and a significance filter
+can't deduplicate that. Left the strikethrough in rather than delete it
+so the wrong turn is visible, not silently erased. Scale of the bug: small
+(sub-pixel to a few
 pixels, only manifests at stroke widths approaching the sample step —
 i.e. hairline/thin weights). Whoever picks this up next: render the graph
 before trusting topology counts (attempt 1's false-positive `m` "fix" was
@@ -650,6 +656,66 @@ It does not resolve or touch the raster pipeline (`core/skeleton.py`,
 is — untouched and still the shipped default — until B0 itself is fully
 de-risked and integrated (a separate, larger, still-unscheduled task; see
 B0's own "still NOT integrated" note above).
+
+**Step 1+2 implemented and tested 2026-07-25 — result: λ does NOT fix the
+B0 noise bug, and that earlier hope (stated above and in the B0 section)
+was wrong.** Built the real thing, not another proxy: true contact sets
+(boundary samples within a scale-free tolerance of `r(x)`, not Voronoi-
+ridge governors), and the actual discrete λ via union-find over cyclic
+per-contour index adjacency while sweeping samples in by increasing
+distance — λ(x) = the extra radius needed for the initially-separate
+contact clusters to merge into one connected arc, `+inf` if the contacts
+lie on different contours (which never topologically merge).
+
+Tested on BungeeHairline `8` (same setup as the two failed proxies):
+**every candidate — noise-cluster nodes and real bowl-junction nodes
+alike — came back `+inf`.** Checked why: this glyph's outline is 3
+separate contours (an outer silhouette + 2 hole/counter contours, typical
+of hairline-weight authoring), so along nearly the entire ribbon, the two
+nearest boundary contacts sit on genuinely different contours *by
+construction* — true for ordinary medial-axis points and for the noise
+cluster identically. The cross-contour "always significant" branch of the
+definition doesn't discriminate anything here; it saturates universally.
+
+**This forced a more useful realization than the number itself: the noise
+bug is probably not a significance-filtering problem at all.** λ (any
+correct implementation of it) is designed to find and remove LOW-
+significance points — real medial-axis points that are there but don't
+matter. Every measure tried against this noise cluster so far (angle, the
+two arc-length proxies, and now real λ) scores it as JUST AS significant
+as genuine junctions, not less. That's consistent with a different
+diagnosis: the noise cluster isn't a spurious *low-significance* feature
+living where nothing should be — it's *several redundant numerical
+vertices all approximating the SAME one true, high-significance feature*
+(the actual pinch point), produced because Qhull's triangulation is
+generically 3-regular and smears any true higher-multiplicity branch
+point into a cluster of nearby degree-3 vertices. A significance filter
+cannot fix over-counting of something significant; it can only decide
+whether to keep or discard a candidate, and every one of these candidates
+looks worth keeping. **Correcting the record:** the B0 section's line "the
+right fix likely isn't a post-hoc merge heuristic at all — it's probably
+the same disease C2's λ/θ filtration is meant to cure" is now believed
+wrong, based on this implementation, not just a hunch — leaving it there
+would mislead whoever reads this doc next. The bug needs a genuine
+deduplication/multiplicity test (something that can tell "these N
+vertices are redundant representations of one true point" from "these are
+N distinct true points"), which is a different, currently-unsolved
+problem from anything in this C2 section.
+
+**C2 itself is unaffected as a plan** — the λ-medial-axis filtration
+remains a sound, principled replacement for the raster pipeline's three
+tuned mechanisms (σ-blur, spur-length, disk-coverage), which is a genuine
+significance-filtering problem, and steps 3-5 above (validate discrimination
+on a *real* over-pruning case, resolution-invariance, threshold plateau)
+are still the right gate for that. It just isn't, on this evidence, also a
+fix for the B0 noise bug — those are two different problems that happened
+to look similar from a distance. **Not scheduled next:** the actual
+deduplication problem needs its own scoping, starting from "detect
+near-degenerate configurations at Voronoi-construction time" rather than
+post-hoc on the finished graph — every attempt (three merge heuristics
+plus this one) that operated after the fact has failed for a related
+reason: by the time you have the graph, real and redundant vertices are
+indistinguishable by any test tried so far.
 
 ### C3. Stroke order and direction as one optimization
 
