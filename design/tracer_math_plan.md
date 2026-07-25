@@ -337,7 +337,8 @@ and stroke decomposition itself, which stays exactly as it is. This is a
 substrate swap under an unchanged junction-first tracer.
 
 **Risks to retire before committing:** Voronoi-based medial axes are
-noise-sensitive on near-degenerate contours.
+noise-sensitive on near-degenerate contours — **root-caused 2026-07-25, not
+yet fixed** (see below, after the winding-rule and overlap items).
 
 **Winding rule — investigated and fixed 2026-07-25.** The
 prototype's even-odd fill is wrong more often than expected: measured
@@ -385,6 +386,53 @@ only dependency (not yet in the core pipeline's dependency list).
 **Gate:** resolution-invariance 40/40 holds on the full 6-font charset;
 outline-coverage metric ≥ current; visual diagnostics on the 6-font set at
 least as good.
+
+**Near-degenerate-contour noise — root-caused 2026-07-25, fix attempted and
+reverted.** Tested against BungeeHairline (an intentionally hairline-weight
+display font, stroke width ≈ sample step — a genuine stress case). Two
+symptoms, both confirmed **visually**, not just from topology counts (a
+first pass at this trusted the counts alone and drew a wrong conclusion —
+see below):
+
+- At a blunt stroke tip (`m`'s stem end), Qhull produces 2-3 near-coincident
+  vertices instead of one clean endpoint — visually a ~1px cluster sitting
+  right on the tip. Increasing sample density does **not** fix this and
+  initially looked like it did (topology went from a correct 2 ends/0
+  junctions to a wrong-looking 4 ends/2 junctions) — that was a false
+  positive from trusting counts without rendering the graph. The 2 extra
+  nodes are the same artifact, just more visible at higher density.
+- At a pinch point (`8`'s waist, where the two bowls meet), the artifact is
+  worse: not simply duplicate points, but a genuine tiny 7-node CYCLE
+  (~5x4px bounding box) woven from several distinct-but-nearby vertices
+  that are NOT directly graph-adjacent to each other. Confirmed via
+  `nx.cycle_basis`: 2 real bowl loops (268 and 302 vertices) plus 2 spurious
+  micro-loops (7 vertices each) at the two pinches, plus 2 real junctions
+  each split into a 3-node cluster (6 junction-degree nodes total instead
+  of 2).
+
+**Two merge-based fixes were tried and both had real side effects, so
+neither is committed:**
+1. Contracting graph edges shorter than a radius-relative epsilon: the
+   pinch-cluster nodes turned out not to be directly graph-adjacent (they
+   connect through other nearby nodes), so this didn't reach them at all.
+2. Spatial (not graph-adjacency) clustering of same-degree-class nodes
+   within a radius-relative epsilon: works partially, but at the epsilon
+   needed to merge the pinch cluster, `8`'s topology comes out as 4 ends /
+   2 junctions instead of the correct 0 ends / 2 junctions — the merge is
+   breaking a closed loop into open paths in some cases, a worse bug than
+   the one it's fixing. An unrestricted version of the same idea (no
+   degree filter) is worse: at the epsilon needed for `m`'s tip, entire
+   straight stems collapse into a single point, because ordinary
+   consecutive path vertices are also "spatially close" once epsilon
+   approaches the sample step.
+
+**Not fixed.** The right fix likely isn't a post-hoc merge heuristic at
+all — it's probably the same disease C2's λ/θ filtration is meant to cure
+(a single principled criterion instead of an ad-hoc distance threshold).
+Scale of the bug: small (sub-pixel to a few pixels, only manifests at
+stroke widths approaching the sample step — i.e. hairline/thin weights).
+Whoever picks this up next: render the graph before trusting topology
+counts, the first pass here didn't and reached a wrong conclusion.
 
 ### B1. Recover the pen — closed-form, per font
 
