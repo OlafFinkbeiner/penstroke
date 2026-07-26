@@ -139,7 +139,7 @@ prototype worth carrying forward:
 | A3 sampling density + physical wobble | **done** | 60/60 tests; geometry-only |
 | B1 nib recovery | **done** | contrast order correct on 6 fonts; exact inversion in unit tests |
 | C0 objective | **done** | ranks post-fix above pre-fix on **39/44** fonts, uniform weights |
-| C3 joint order/orientation | **done** | pen-up travel **−42.8%** across 6 fonts × 62 glyphs |
+| C3 joint order/orientation | **done, revised 2026-07-26** | pen-up travel **−42.8%**; travel-only was still unnatural (K's serifs split the stem) -- added stroke-role classification (main vs. attached) + loop-direction rule (magic-C counterclockwise / tangent-continuity), see below |
 | B0 vector medial axis | **de-risked, not integrated** | winding rule + overlap seams fixed and verified; near-degenerate noise root-caused but unfixed; graduated to `core/vector_skeleton.py` with tests, NOT wired into `skeletonize()`/the tracer -- see below |
 | C1 Euler-spiral pairing | **not started** | gated on C0, which now exists |
 | C2 λ/θ filtration | **contact-set + real λ implemented and tested 2026-07-25** | plan for the *pruning* problem C2 targets is still sound and unstarted on that front; but λ tested against the B0 noise bug specifically and does NOT fix it -- that bug is vertex multiplicity, not low significance, a different problem -- see below |
@@ -729,6 +729,54 @@ milliseconds at ≤15 strokes per glyph.
 
 Also feeds the animation layer: real pen-lift distances would drive lift
 timing in `penstroke::animate` instead of a constant gap.
+
+**Revised 2026-07-26 — travel minimisation alone still produced unnatural
+order.** The Held-Karp joint optimiser above shipped and works (pen-up
+travel −42.8%), but travel distance turned out to be an incomplete proxy
+for "looks hand-drawn": on Arvo's `K`, it happily scheduled a tiny top
+serif tick → the upper diagonal leg → the stem → the lower diagonal leg →
+the bottom serif tick, because that ordering minimised total hop distance
+— but it sandwiches the stem (one continuous natural motion) between two
+unrelated diagonals, which no person draws. Distance correlates with
+"natural" but isn't it.
+
+Researched actual handwriting/lettering convention rather than guessing
+(Handwriting Without Tears / Zaner-Bloser "magic C" curriculum; general
+sign-painting/lettering practice) and added two rules on top of the
+existing solver, both in `tracer.py`:
+
+- **Stroke roles** (`_classify_attachments`): a walk is SECONDARY if it's
+  shorter than `SMALL_FRAC` of another walk it touches (reusing that
+  existing threshold, not a new one) — a serif tick, crossbar remnant, or
+  flick branching off a longer stroke. Only MAIN walks compete for a band
+  slot in the travel optimiser; each SECONDARY walk is scheduled right
+  after the LAST of its parent(s) instead. "Touches" is checked in both
+  directions — a straight crossbar met by a perpendicular stem in its
+  middle (a T-junction) has the *stem's* endpoint landing on the
+  *crossbar's* interior, not the other way round, which the first version
+  of this missed and had to be fixed once K's serifs still weren't
+  reclassified. Reuses `MERGE_RADIUS_W` for the touch tolerance rather
+  than inventing a new constant, once the first guess (a smaller ad-hoc
+  tolerance) proved too tight by a few pixels on the same K case.
+- **Closed-loop direction** (`_reorient_loop`), replacing the old
+  unconditional-clockwise rule: if a loop is attached to a stem at a
+  shared point (b/d/p/g/q bowls), enter there and curl in whichever
+  direction continues smoothest from the incoming tangent — no reversal
+  at the join. If standalone (plain 'o'), enter at the top and go
+  **counterclockwise** — the previous rule was clockwise, which is
+  backwards from the "magic C" convention (c/a/d/g/o/q/s all start with a
+  backwards-C curl). Also fixes a real gap: orphan closed-loop components
+  (pure cycles like 'o') previously bypassed orientation entirely and
+  took whatever direction the raw skeleton scan produced — accidentally
+  fine on the one glyph checked, not a deliberate rule.
+
+Verified via the project's standard sweep protocol: 0 stroke-count changes
+across the 6-font probe set (940 glyph instances) — this only touches
+order/direction, never decomposition — arc-length shifts all <1%
+(sub-pixel noise from where a rotated loop's point array starts), full
+pytest, and visual diagnostics on K/Z/A/t/d/o plus a DancingScript sanity
+check (script fonts mostly don't hit the closed-loop path at all, so
+serve as a no-regression check on the rest).
 
 ### C4. Kinematic plausibility (research bet, not scheduled)
 

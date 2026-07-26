@@ -21,9 +21,14 @@ Pipeline per glyph:
   4. CHAIN BUILDING: follow the pairings mechanically. Every edge lands
      in exactly one chain; chains run terminal-to-terminal or close
      into loops. Each chain is one natural pen stroke.
-  5. Orientation + ordering: closed loops start at their topmost pixel
-     and run clockwise; open strokes run top-to-bottom / left-to-right;
-     strokes are emitted big-first with dots/tittles last.
+  5. Orientation + ordering (order_all_walks): each stroke is classified
+     main or secondary (a serif tick/crossbar/flick branching off a
+     longer stroke); main strokes are ordered top-to-bottom by band,
+     minimising pen-up travel within a band, with secondary strokes
+     slotted in right after the stroke they're attached to. Closed loops
+     enter smoothly from whatever drew into them, or top-and-
+     counterclockwise if standalone (the "magic C" convention). Dots and
+     tittles are always emitted last.
   6. Smoothing: each chain goes through core.smoothing.smooth_and_wobble
      for spline fit, per-point widths from the distance transform, and
      the hand-drawn wobble.
@@ -85,6 +90,18 @@ TIP_CLEARANCE_SIGMAS = 6.0
 # component length are dots/tittles and get pushed to the end of the order.
 # Dimensionless — already scale-free.
 SMALL_FRAC = 0.30
+
+# A stroke is SECONDARY (a serif tick, crossbar remnant, or flick) rather
+# than a main structural stroke if it is shorter than SMALL_FRAC of a walk
+# it touches at an endpoint. Reuses SMALL_FRAC's existing meaning ("short
+# relative to context") rather than a new constant — see
+# `_classify_attachments` and design/tracer_math_plan.md's C3 stroke-order
+# section for the reasoning (main strokes before what's attached to them,
+# not just "whatever is spatially nearest"). "Touches" reuses
+# MERGE_RADIUS_W rather than a new tolerance: a serif/stem pair that meets
+# at one true junction can still end up with slightly different endpoint
+# pixels after chain-building, exactly the same slack merge_nearby_junctions
+# already tolerates when deciding two junction nodes are "the same" one.
 
 
 def glyph_scale(skel, dist_map):
@@ -663,41 +680,136 @@ def _polyline_length(pixels):
     return float(np.hypot(np.diff(arr[:, 0]), np.diff(arr[:, 1])).sum())
 
 
-def _orient_clockwise_if_closed(walk):
-    """For a closed walk, ensure clockwise orientation (positive shoelace in
-    image-y-down coords) and rotate so the topmost pixel is first."""
-    if not walk or walk[0] != walk[-1]:
-        return walk
-    arr = np.asarray(walk, dtype=float)
-    x = arr[:, 1]
-    y = arr[:, 0]
-    area2 = float(np.sum(x[:-1] * y[1:] - x[1:] * y[:-1]))
-    if area2 < 0:
-        walk = walk[::-1]
-    top_idx = int(np.argmin([p[0] for p in walk[:-1]]))
-    walk = walk[top_idx:-1] + walk[:top_idx] + [walk[top_idx]]
-    return walk
+def _reorient_loop(loop_walk, prev_walk, scale):
+    """Decide a closed loop's start point and direction.
+
+    Two cases, chosen by whether the loop is attached to something already
+    drawn:
+
+    - If it shares a point with `prev_walk`'s end (a bowl on a stem, e.g.
+      'b'/'d'/'p'/'g'/'q'), enter there and go in whichever direction
+      continues most smoothly from the incoming tangent — the pen never
+      reverses direction at the join, same continuation principle the
+      junction analysis itself uses to decide which edges chain together.
+    - Otherwise (a standalone loop like plain 'o'), enter at the topmost
+      pixel and go COUNTERCLOCKWISE. This is the "magic C" convention
+      taught for c/a/d/g/o/q/s in manuscript handwriting curricula
+      (Handwriting Without Tears, Zaner-Bloser): start near the top, curl
+      left-and-down first, like a backwards C. The previous rule here was
+      always clockwise, which is backwards from how these letters are
+      actually taught to be written.
+    """
+    if not loop_walk or loop_walk[0] != loop_walk[-1]:
+        return loop_walk
+    arr = np.asarray(loop_walk[:-1], dtype=float)
+    n = len(arr)
+    if n < 3:
+        return loop_walk
+
+    entry_idx = None
+    incoming_tangent = None
+    if prev_walk is not None and len(prev_walk) >= 2:
+        prev_end = np.asarray(prev_walk[-1], dtype=float)
+        d = np.hypot(arr[:, 0] - prev_end[0], arr[:, 1] - prev_end[1])
+        idx = int(np.argmin(d))
+        if d[idx] <= MERGE_RADIUS_W * scale:
+            entry_idx = idx
+            t = prev_end - np.asarray(prev_walk[-2], dtype=float)
+            nt = float(np.hypot(*t))
+            if nt > 1e-9:
+                incoming_tangent = t / nt
+    if entry_idx is None:
+        entry_idx = int(np.argmin(arr[:, 0]))   # topmost pixel
+
+    fwd = np.concatenate([arr[entry_idx:], arr[:entry_idx]])
+    bwd = np.concatenate([arr[entry_idx::-1], arr[:entry_idx:-1]])
+
+    if incoming_tangent is not None:
+        def _start_tangent(seq):
+            t = seq[1] - seq[0]
+            nt = float(np.hypot(*t))
+            return t / nt if nt > 1e-9 else t
+        score_fwd = float(np.dot(incoming_tangent, _start_tangent(fwd)))
+        score_bwd = float(np.dot(incoming_tangent, _start_tangent(bwd)))
+        chosen = fwd if score_fwd >= score_bwd else bwd
+    else:
+        x, y = fwd[:, 1], fwd[:, 0]
+        area2 = float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+        chosen = fwd if area2 < 0 else bwd   # area2 < 0 == counterclockwise
+
+    out = [tuple(p) for p in chosen]
+    out.append(out[0])
+    return out
+
+
+def _closest_point_on_walk(pt, walk_arr):
+    d = np.hypot(walk_arr[:, 0] - pt[0], walk_arr[:, 1] - pt[1])
+    idx = int(np.argmin(d))
+    return float(d[idx])
+
+
+def _classify_attachments(walks, lengths, scale):
+    """Find secondary strokes (serif ticks, crossbar remnants, flicks) that
+    branch off a longer stroke, so they can be scheduled right after their
+    parent instead of competing for a slot based on raw distance alone —
+    that's what let a serif tick get scheduled between two unrelated
+    diagonal strokes on a 'K' (see design/tracer_math_plan.md's C3 section).
+
+    A walk is secondary if it is shorter than SMALL_FRAC of some OTHER
+    walk it touches (within MERGE_RADIUS_W*scale). It can have more than
+    one parent (a crossbar touches two stems) — the caller schedules it
+    after the LAST of its parents.
+
+    "Touches" checks both directions, because a secondary stroke doesn't
+    always meet its parent at one of the SECONDARY's own endpoints: a
+    straight serif/crossbar that a perpendicular stem meets in the middle
+    (a T-junction) has its own two endpoints sitting at the bar's far
+    tips, with the STEM's endpoint landing on the bar's interior instead.
+    When the touch is at one of the secondary's own ends, that end becomes
+    its natural "start from the attachment point and flick outward"
+    orientation; a mid-bar touch has no such natural direction, so the
+    walk is left in its original direction.
+
+    Returns (parents, touch_end): parents[i] is a list of parent indices
+    (empty => main stroke); touch_end[i] is 'start' or 'end' if one of
+    walk i's own ends is the attachment point, else None (main, or a
+    secondary touched mid-walk).
+    """
+    n = len(walks)
+    arrs = [np.asarray(w, dtype=float) for w in walks]
+    tol = MERGE_RADIUS_W * scale
+    parents = [[] for _ in range(n)]
+    touch_end = [None] * n
+    for i in range(n):
+        if lengths[i] <= 0:
+            continue
+        matched_ends = set()
+        for j in range(n):
+            if i == j or lengths[j] <= 0 or lengths[i] >= SMALL_FRAC * lengths[j]:
+                continue
+            touched = False
+            for end_name, pt in (('start', arrs[i][0]), ('end', arrs[i][-1])):
+                if _closest_point_on_walk(pt, arrs[j]) <= tol:
+                    matched_ends.add(end_name)
+                    touched = True
+            if not touched:
+                for parent_end in (arrs[j][0], arrs[j][-1]):
+                    if _closest_point_on_walk(parent_end, arrs[i]) <= tol:
+                        touched = True
+                        break
+            if touched:
+                parents[i].append(j)
+        if parents[i]:
+            if 'start' in matched_ends:
+                touch_end[i] = 'start'
+            elif 'end' in matched_ends:
+                touch_end[i] = 'end'
+    return parents, touch_end
 
 
 # ---------------------------------------------------------------------------
 # Inter-component ordering and per-walk orientation
 # ---------------------------------------------------------------------------
-
-def _orient_walk_for_writing(w):
-    """Force vertical strokes top-to-bottom, horizontals left-to-right."""
-    if not w or w[0] == w[-1]:
-        return w
-    arr = np.asarray(w)
-    dy = arr[-1, 0] - arr[0, 0]
-    dx = arr[-1, 1] - arr[0, 1]
-    if abs(dy) > abs(dx):
-        if dy < 0:
-            w = w[::-1]
-    else:
-        if dx < 0:
-            w = w[::-1]
-    return w
-
 
 # Cost, in units of W, charged for orienting a walk against the writing
 # convention. Scaled by how strongly the walk is axis-aligned, so a clearly
@@ -736,11 +848,15 @@ def _order_band(walks, start_xy, scale):
     penalty per reversed walk. Exact via Held-Karp over
     (visited, last, orientation); greedy above MAX_EXACT_ORDER.
 
-    Returns (ordered_oriented_walks, end_xy, travel).
+    Returns (ordered_oriented_walks, order, end_xy, travel), where `order`
+    is the [(index_into_walks, orientation), ...] choice the solver made —
+    exposed so a caller that needs to track original identity (e.g. to
+    look up which stroke a given result came from) doesn't have to
+    re-match walks by value.
     """
     n = len(walks)
     if n == 0:
-        return [], start_xy, 0.0
+        return [], [], start_xy, 0.0
 
     # endpoints[i][o] = (start_point, end_point, penalty) for orientation o
     ends = []
@@ -812,48 +928,112 @@ def _order_band(walks, start_xy, scale):
 
     out = [walks[i] if o == 0 else walks[i][::-1] for (i, o) in order]
     end_xy = ends[order[-1][0]][order[-1][1]][1]
-    return out, end_xy, travel
+    return out, order, end_xy, travel
 
 
 def order_all_walks(walks_with_bbox_len, scale):
-    """Order walks into a natural drawing order, choosing direction jointly.
+    """Order walks into a natural drawing order, choosing role, order, and
+    direction together.
 
     Input: list of (walk, bbox=(ymin,xmin,ymax,xmax), total_len) tuples.
     Returns the walks in final order, each oriented for writing.
 
-    Convention CONSTRAINS, optimisation fills the remaining freedom. The
-    outer structure is unchanged and non-negotiable — dots and tittles
-    last, top y-band before bottom — because those encode how people
-    actually write, and a pure travel minimisation would happily draw an
-    'E' bottom-up. Within a band, order and per-walk direction are chosen
-    together to minimise pen-up travel (plus a convention penalty that
-    fades out for non-axis-aligned walks).
+    Three layers, outer to inner:
 
-    Previously the two decisions were independent: `order_all_walks` was a
-    5-key sort and `_orient_walk_for_writing` forced axis directions with
-    no reference to where the previous stroke ended, so the pen
-    teleported between strokes.
+    1. STRUCTURE (non-negotiable): dots/tittles last, top y-band before
+       bottom — this encodes how people actually write; a pure travel
+       minimisation would happily draw an 'E' bottom-up.
+    2. ROLE (`_classify_attachments`): each walk is MAIN or SECONDARY. Only
+       MAIN walks compete for a band slot. A SECONDARY walk (serif tick,
+       crossbar remnant, flick) is always scheduled right after the LAST
+       of its parent(s), oriented to start from the point where it
+       touches — never treated as an independent stroke free to slot in
+       wherever raw travel distance happens to favour, which is what let a
+       serif tick get scheduled between two unrelated diagonals on a 'K'.
+    3. Within that, order and direction of MAIN walks are chosen together
+       to minimise pen-up travel (plus a convention penalty that fades out
+       for non-axis-aligned walks) — same solver as before. Closed loops
+       among the MAIN walks then get their entry point and direction
+       decided by `_reorient_loop`: continue smoothly from whatever drew
+       into them, or counterclockwise-from-the-top if standalone.
     """
     if not walks_with_bbox_len:
         return []
-    median_len = float(np.median([t for (_, _, t) in walks_with_bbox_len]))
-    band_h = max(1.0, Y_BAND_W * scale)
+    walks = [w for (w, _, _) in walks_with_bbox_len]
+    bboxes = [b for (_, b, _) in walks_with_bbox_len]
+    totals = [t for (_, _, t) in walks_with_bbox_len]
+    lengths = [_polyline_length(w) for w in walks]
+    n = len(walks)
 
+    parents, touch_end = _classify_attachments(walks, lengths, scale)
+    is_secondary = [bool(p) for p in parents]
+    main_idx = [i for i in range(n) if not is_secondary[i]]
+    if not main_idx:
+        # Shouldn't happen (a walk can't be shorter than itself), but
+        # never let classification silently drop every stroke.
+        main_idx = list(range(n))
+        is_secondary = [False] * n
+
+    median_len = float(np.median([totals[i] for i in main_idx]))
+    band_h = max(1.0, Y_BAND_W * scale)
     groups = {}
-    for (w, bbox, tot) in walks_with_bbox_len:
-        is_tiny = 1 if tot < SMALL_FRAC * median_len else 0
-        groups.setdefault((is_tiny, bbox[0] // band_h), []).append(w)
+    for i in main_idx:
+        is_tiny = 1 if totals[i] < SMALL_FRAC * median_len else 0
+        groups.setdefault((is_tiny, bboxes[i][0] // band_h), []).append(i)
 
     # Pen enters the glyph at its top-left — the conventional start.
-    allpts = np.concatenate([np.asarray(w, float)
-                             for (w, _, _) in walks_with_bbox_len])
+    allpts = np.concatenate([np.asarray(w, float) for w in walks])
     pen = np.array([allpts[:, 0].min(), allpts[:, 1].min()], dtype=float)
 
-    ordered = []
+    main_order = []
+    main_walks = {}
     for key in sorted(groups):
-        band_walks, pen, _travel = _order_band(groups[key], pen, scale)
-        ordered.extend(band_walks)
-    return ordered
+        idxs = groups[key]
+        _out, band_order, pen, _travel = _order_band(
+            [walks[i] for i in idxs], pen, scale)
+        for (local_i, o) in band_order:
+            orig_i = idxs[local_i]
+            main_order.append(orig_i)
+            main_walks[orig_i] = walks[orig_i] if o == 0 else walks[orig_i][::-1]
+
+    # Closed loops among the main strokes: entry point + direction depend
+    # on whatever precedes them in the final order.
+    prev_walk = None
+    for i in main_order:
+        w = main_walks[i]
+        if w and w[0] == w[-1]:
+            w = _reorient_loop(w, prev_walk, scale)
+            main_walks[i] = w
+        prev_walk = w
+
+    # Insert secondary strokes right after the last of their parents.
+    # Iterated to a fixed point so a secondary-on-secondary chain (rare)
+    # still resolves, instead of only handling one level of attachment.
+    position = {i: k for k, i in enumerate(main_order)}
+    final_order = list(main_order)
+    pending = [i for i in range(n) if is_secondary[i]]
+    while pending:
+        still_pending, progressed = [], False
+        for i in pending:
+            if not all(p in position for p in parents[i]):
+                still_pending.append(i)
+                continue
+            at = max(position[p] for p in parents[i])
+            w = walks[i][::-1] if touch_end[i] == 'end' else walks[i]
+            final_order.insert(at + 1, i)
+            main_walks[i] = w
+            position = {idx: k for k, idx in enumerate(final_order)}
+            progressed = True
+        pending = still_pending
+        if not progressed and pending:
+            # No main-stroke root reachable (shouldn't happen given the
+            # length-ratio gate) -- append rather than drop silently.
+            for i in pending:
+                final_order.append(i)
+                main_walks[i] = walks[i]
+            break
+
+    return [main_walks[i] for i in final_order]
 
 
 # ---------------------------------------------------------------------------
@@ -947,8 +1127,9 @@ def trace_glyph_eulerian(font_path, char, size=384, seed=1):
     for spec in components:
         Gc = spec.subgraph
         walks = build_chains(Gc, pairing)
-        walks = [_orient_clockwise_if_closed(w) if (w and w[0] == w[-1])
-                 else w for w in walks]
+        # Closed-loop orientation is decided later, in order_all_walks,
+        # where the context of what's drawn immediately before a loop is
+        # actually available (see _reorient_loop).
         for w in walks:
             if len(w) < 2 or _polyline_length(w) < MIN_WALK_LEN_W * W:
                 continue

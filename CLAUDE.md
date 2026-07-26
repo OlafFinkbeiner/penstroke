@@ -205,8 +205,9 @@ fix the mechanism. Where to look:
   `tracer.py::build_annotated_graph` (scrambled-path
   repair, duplicate removal) and
   `core/graph.py::collapse_parallel_edges`.
-- Wrong direction/order: `_orient_walk_for_writing`,
-  `_orient_clockwise_if_closed`, `order_all_walks` in tracer.py.
+- Wrong direction/order: `tracer.py::order_all_walks` (role classification
+  via `_classify_attachments` — main vs. secondary/attached strokes —
+  plus closed-loop direction via `_reorient_loop`).
 - Missing dots/tittles: `_split_mask_dots` in tracer.py.
 - Skeleton itself wrong: `core/skeleton.py` (pruning) — but check the
   graph hygiene passes first.
