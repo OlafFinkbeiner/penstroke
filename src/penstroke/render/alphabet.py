@@ -125,7 +125,13 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
         f'.ribbon {{ fill: {ink_color}; opacity: 0; }}',
         f'.guide  {{ fill: none; stroke: {ink_color}; '
         f'stroke-linecap: round; stroke-linejoin: round; }}',
-        f'.underlay {{ fill: #fde68a; fill-rule: evenodd; opacity: 0.7; }}',
+        # Width-band QC view (toggled by the viewer): the RAW per-point
+        # width (no taper) as a translucent band, with the bare
+        # centerline on top. Hidden until the viewer enables it.
+        f'.wband  {{ fill: {ink_color}; opacity: 0; }}',
+        '.wbandcl { fill: none; stroke: #e11; stroke-width: 0.8; '
+        'opacity: 0; stroke-linecap: round; stroke-linejoin: round; }',
+        '.underlay { fill: #fde68a; fill-rule: evenodd; opacity: 0.7; }',
         '.label { font-size: 11px; fill: #888; text-anchor: middle; }',
         '.cell-bg { fill: white; stroke: #eee; stroke-width: 1; rx: 6; }',
         '</style></defs>',
@@ -198,6 +204,11 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
                 )
             else:
                 svg.append(f'<path class="ribbon" style="opacity:1" d="{ribbon_d}" />')
+            # Width-band QC overlay (raw width, no taper) + centerline,
+            # hidden until the viewer's "Width band" toggle.
+            band_d = stroke_to_ribbon_path(xs, ys, widths, taper=False)
+            svg.append(f'<path class="wband" d="{band_d}" />')
+            svg.append(f'<path class="wbandcl" d="{center_d}" />')
         svg.append('</g>')
 
     if animate:

@@ -21,7 +21,6 @@ inside a single pen-width? Does it animate like a person writing?
 
 import os
 import math
-import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from penstroke.core.outline import extract_outlines
@@ -316,7 +315,6 @@ def render_all_diagnostics(font_path, traced_per_letter, output_dir,
     """
     diag_dir = os.path.join(output_dir, 'diagnostics')
     os.makedirs(diag_dir, exist_ok=True)
-    from penstroke.core.rasterize import rasterize_glyph
 
     for ch in letters:
         info = traced_per_letter.get(ch)

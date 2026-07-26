@@ -24,7 +24,6 @@ often false positives worth ignoring.
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Optional
 import json
 import math
 import os
@@ -60,7 +59,9 @@ def geometric_issues(char, traced, tortuosity_high=1.8, max_extent_factor=1.0):
 
     - tortuosity > tortuosity_high (path length / displacement) signals
       a stroke that goes back and forth (e.g. M's diagonals before the
-      waypoint fix).
+      waypoint fix). CLOSED strokes are exempt: a loop legitimately ends
+      where it starts (displacement ~ 0), which is drawing a circle,
+      not backtracking — without the exemption every o/0/8 fires.
     - max_extent < avg_width signals a stroke coiled inside its own pen
       stamp (the historical i/j phantom).
     """
@@ -69,6 +70,7 @@ def geometric_issues(char, traced, tortuosity_high=1.8, max_extent_factor=1.0):
         plen, disp, extent = _stroke_geometry(xs, ys)
         avg_w = float(np.mean(ws))
         tort = plen / max(disp, 1e-6)
+        is_closed = disp <= max(avg_w * 2.0, 6.0) and plen > extent
         if extent < avg_w * max_extent_factor:
             issues.append(Issue(
                 char=char, kind='phantom_stroke', severity='high',
@@ -76,7 +78,7 @@ def geometric_issues(char, traced, tortuosity_high=1.8, max_extent_factor=1.0):
                        f'(extent {extent:.1f} < width {avg_w:.1f})',
                 data={'stroke': i, 'extent': extent, 'width': avg_w},
             ))
-        elif tort > tortuosity_high:
+        elif tort > tortuosity_high and not is_closed:
             issues.append(Issue(
                 char=char, kind='zigzag', severity='medium',
                 detail=f'stroke {i} backtracks (tortuosity {tort:.2f})',
@@ -407,6 +409,71 @@ def run_cascade_on_output(output_dir, font_path, letters, size=384):
             mask, _, _, traced, _, _ = _trace(font_path, ch, size=size)
         except Exception:
             continue
+        try:
+            outlines = extract_outlines(font_path, ch, size=size)
+        except Exception:
+            outlines = []
+        spec_entry = spec.get(ch) if spec else None
+        issues = run_cascade(ch, traced, outlines=outlines,
+                             spec_entry=spec_entry, mask=mask)
+        if issues:
+            per_letter_issues[ch] = issues
+    return per_letter_issues
+
+
+def run_cascade_on_store(output_dir, letters=None):
+    """Run the cascade against the CURRENT decomposition — the stroke
+    store — rather than re-tracing.
+
+    The store (strokes.json) is the source of truth: after a Corel edit
+    round it differs from a fresh trace, and it is the store that
+    renders. Judging a re-trace would evaluate strokes the user never
+    sees — and cost a full skeletonization per glyph on top. Only the
+    ink mask and outlines are (cheaply) re-derived, for the off-ink and
+    coverage layers.
+
+    Trace-time size comes from the metadata.json 'trace' block (legacy
+    default 384). Returns a dict char -> [Issue, ...].
+    """
+    import glob as _glob
+    from penstroke.core.outline import extract_outlines
+    from penstroke.core.rasterize import rasterize_glyph
+    from penstroke.editround import load_stroke_store
+
+    store = load_stroke_store(output_dir)
+    if not store:
+        raise FileNotFoundError(
+            f'{output_dir}: no strokes.json — trace the font first')
+    fonts = sorted(_glob.glob(os.path.join(output_dir, 'source', '*.ttf')))
+    if not fonts:
+        raise FileNotFoundError(
+            f'no source font found under {output_dir}/source/')
+    font_path = fonts[0]
+
+    size = 384
+    meta_path = os.path.join(output_dir, 'metadata.json')
+    if os.path.exists(meta_path):
+        try:
+            with open(meta_path, encoding='utf-8') as f:
+                size = int(json.load(f).get('trace', {}).get('size', size))
+        except (ValueError, KeyError):
+            pass
+
+    spec = None
+    spec_path = os.path.join(output_dir, 'spec.json')
+    if os.path.exists(spec_path):
+        with open(spec_path, encoding='utf-8') as f:
+            spec = json.load(f)
+
+    per_letter_issues = {}
+    for ch in (letters or store.keys()):
+        traced = store.get(ch)
+        if not traced:
+            continue
+        try:
+            mask, _meta = rasterize_glyph(font_path, ch, size=size)
+        except Exception:
+            mask = None
         try:
             outlines = extract_outlines(font_path, ch, size=size)
         except Exception:

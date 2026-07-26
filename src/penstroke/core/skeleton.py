@@ -16,7 +16,15 @@ emits at corners and serifs. These would otherwise be treated as real strokes.
 
 import numpy as np
 from skimage.morphology import medial_axis
-from scipy.ndimage import binary_closing, gaussian_filter, distance_transform_edt
+from scipy.ndimage import gaussian_filter, distance_transform_edt
+
+# Boundary pre-smoothing applied before the medial axis. Deliberately an
+# ABSOLUTE pixel quantity, and it must stay that way: it exists to suppress
+# corner ALIASING, which is a property of the pixel grid, not of the glyph.
+# Thresholds describing corner ROUNDING (rather than stroke geometry) belong
+# in multiples of this, not of the stroke width — see TIP_CLEARANCE_SIGMAS
+# in tracer.py.
+SKELETON_SIGMA = 1.5
 
 
 def skeletonize(mask):
@@ -33,10 +41,10 @@ def skeletonize(mask):
     Eulerian tracer). We pass a fixed random_state so the same input
     always yields the same skeleton.
     """
-    # Gaussian + threshold smooths sharp corner artifacts. sigma=1.5 is the
-    # smallest value that kills the worst spurs without rounding off real
+    # Gaussian + threshold smooths sharp corner artifacts. SKELETON_SIGMA is
+    # the smallest value that kills the worst spurs without rounding off real
     # geometry (verified empirically on DejaVu/Caveat at 512px).
-    smoothed = gaussian_filter(mask.astype(float), sigma=1.5)
+    smoothed = gaussian_filter(mask.astype(float), sigma=SKELETON_SIGMA)
     mask_clean = (smoothed > 0.5).astype(np.uint8)
     try:
         skel, dist = medial_axis(mask_clean, return_distance=True,
@@ -58,18 +66,46 @@ def skeletonize(mask):
     return skel, dist_clean
 
 
-def prune_skeleton(skel, dist, min_branch_len_factor=2.2):
+def prune_skeleton(skel, dist, min_branch_len_factor=0.5):
     """Remove short skeleton spurs at corners and serifs.
 
     The medial axis of a glyph corner has an unfortunate property: it sprouts
     a short branch toward each acute corner. Those branches look like real
     strokes ("A has six legs not three"). We iteratively remove any branch
-    shorter than `factor * local_stroke_thickness` (so the threshold scales
-    with stroke weight — bold fonts allow longer spurs to be legitimately
-    short relative to stroke width).
+    shorter than `factor * parent_stroke_half_width`.
+
+    DELIBERATELY CONSERVATIVE (0.5, not the ~1.0-2.2 a length-only rule would
+    need to fully clean up a glyph on its own). This pass has ONE job: kill
+    branches too short to be anything but pixel/raster noise. It must NOT
+    try to decide "is this short branch a real serif or corner-rounding
+    artifact" — length alone can't tell those apart (both are short), and a
+    branch pruned HERE never reaches the graph, so
+    tracer.py::prune_redundant_leaves' ink-coverage test (which CAN tell
+    them apart, per-glyph, from the actual geometry) never gets a chance to
+    rule on it. A single global factor tuned to make that call by itself
+    can't simultaneously keep real short features on some glyphs and drop
+    corner noise on others (measured: no factor in [0.5, 2.2] gets both
+    Arvo 'x' and Arvo 'Z' right at once) — so don't ask it to. Leave the
+    feature-vs-noise judgment to the test built for it.
+
+    SCALE ANCHOR (this is the subtle part). The half-width is read at the
+    branch's JUNCTION end — the parent stem's own thickness — never at its
+    free tip. A spur terminates *at a boundary corner*, where the distance
+    transform reports the corner rounding left by the sigma=1.5 pre-smooth:
+    a property of the blur kernel, not of the glyph. Measured on Arvo 'H',
+    dist-at-tip is pinned at 5-6px at 256, 384, 768 AND 1536px, while spur
+    length scales normally (7 -> 11 -> 29 -> 60px). Anchoring there compared
+    a scaling quantity against a constant, so the rule inverted as
+    resolution rose: 16/16 spurs pruned at 256px, 0/16 at 768px. That single
+    mis-anchor was the dominant cause of the tracer's resolution
+    instability. The junction anchor scales correctly by construction.
     """
     skel = skel.copy()
     H, W = skel.shape
+    # Scale-free walk bound: no branch can be pruned once it is longer than
+    # the largest threshold the glyph can produce, so stop walking there
+    # rather than at a fixed pixel count.
+    max_walk = int(max(8.0, min_branch_len_factor * float(dist.max()))) + 2
 
     for _ in range(6):  # iterate: pruning creates new endpoints
         # Count neighbors at every skeleton pixel
@@ -109,15 +145,16 @@ def prune_skeleton(skel, dist, min_branch_len_factor=2.2):
                 prev = cur
                 cur = nbrs[0]
                 path.append(cur)
-                if len(path) > 80:
-                    break  # safety bound: this isn't a spur if it's this long
+                if len(path) > max_walk:
+                    break  # too long to be a spur under any threshold
 
-            local_thickness = dist[ep[0], ep[1]] if dist[ep[0], ep[1]] > 0 else 3
-            # Spur threshold: longer of (absolute floor) or (proportional to
-            # local stroke width). The proportional rule catches the case where
-            # a slab-serif on an 'I' creates a ~10px spur off a ~12px-thick
-            # stem — abs threshold of 12 alone would miss it.
-            threshold = max(12, local_thickness * min_branch_len_factor)
+            # Parent half-width, read at the junction end of the branch
+            # (path[-1]) — see the SCALE ANCHOR note in the docstring.
+            jy, jx = path[-1]
+            parent_half_width = float(dist[jy, jx])
+            if parent_half_width <= 0:
+                parent_half_width = 3.0
+            threshold = parent_half_width * min_branch_len_factor
             if len(path) < threshold:
                 # Erase everything except the junction pixel itself
                 for p in path[:-1]:

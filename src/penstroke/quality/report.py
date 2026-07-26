@@ -72,19 +72,20 @@ def build_report(font_name, per_letter_results):
         else:
             major.append((ch, issues))
 
-    # Template usage summary
-    template_counts: dict[str, int] = {}
+    # Tracer usage summary ('template_used' is the historic field name;
+    # it has carried the tracer name since the Hershey stack was removed)
+    tracer_counts: dict[str, int] = {}
     for info in per_letter_results.values():
         t = info.get('template_used') or 'none'
-        template_counts[t] = template_counts.get(t, 0) + 1
+        tracer_counts[t] = tracer_counts.get(t, 0) + 1
 
     lines = [
         f"# {font_name} — Trace Report",
         "",
         f"**Letters traced:** {len(per_letter_results)}",
         "",
-        "**Templates used:** " + ", ".join(
-            f"{name} ({n})" for name, n in sorted(template_counts.items(), key=lambda kv: -kv[1])
+        "**Tracer:** " + ", ".join(
+            f"{name} ({n})" for name, n in sorted(tracer_counts.items(), key=lambda kv: -kv[1])
         ),
         "",
         "## Summary",
@@ -120,7 +121,7 @@ def build_report(font_name, per_letter_results):
 
 def build_metadata_json(font_name, font_file, license_id, per_letter_results,
                        canvas_dims, baseline_y, upem,
-                       filename_fn=None):
+                       filename_fn=None, trace_params=None, pen=None):
     """Build the machine-readable metadata.json for a font's output folder.
 
     Args:
@@ -128,6 +129,15 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
             If None, falls back to a simple a-z/cap_A-Z convention (which
             doesn't handle special chars — the caller should pass the
             pipeline's `safe_filename` instead).
+        trace_params: dict of trace-time parameters (size, pad, charset)
+            recorded under the 'trace' key. The stroke store's coordinates
+            live in the canvas defined by size/pad, so every later
+            consumer (export/import-corel, sync-edits, the hfont rep
+            builders) reads them from here instead of assuming defaults.
+        pen: recovered nib parameters from core.nib.fit_nib (angle,
+            contrast, thick/thin widths, R^2), recorded under the 'pen'
+            key. Read `r2` before trusting the rest — a monoline font has
+            no nib to recover and correctly scores near zero.
     """
     if filename_fn is None:
         def filename_fn(c):
@@ -139,21 +149,40 @@ def build_metadata_json(font_name, font_file, license_id, per_letter_results,
         overall_score, _ = metrics['overall_score']
         issues = [issue for _name, (_score, issue) in metrics.items()
                   if issue is not None]
+        per_metric = {name: round(score, 3)
+                      for name, (score, _issue) in metrics.items()
+                      if name != 'overall_score'}
+        worst = min(per_metric, key=per_metric.get) if per_metric else None
         letters[ch] = {
             'file': f'glyphs/{filename_fn(ch)}',
             'template_used': info.get('template_used'),
             'stroke_count': info.get('stroke_count', 0),
             'advance_px': info.get('advance_px'),
             'quality_score': round(overall_score, 3),
+            # quality_score = min over metrics; expose the components so
+            # consumers can filter by a SPECIFIC metric instead of
+            # parsing English issue strings.
+            'metric_scores': per_metric,
+            'worst_metric': worst,
             'issues': issues,
         }
 
-    return json.dumps({
+    from penstroke.quality.ocr import ocr_available
+    data = {
         'font_name': font_name,
         'font_file': font_file,
         'license': license_id,
         'units_per_em': upem,
         'canvas_dims': list(canvas_dims),
         'baseline_y': baseline_y,
+        # Whether the OCR metric could run on this machine: without
+        # this flag, a font traced where tesseract is missing looks
+        # cleaner than the same font traced where it is installed.
+        'qa': {'ocr_ran': bool(ocr_available())},
         'letters': letters,
-    }, indent=2)
+    }
+    if trace_params:
+        data['trace'] = trace_params
+    if pen:
+        data['pen'] = pen
+    return json.dumps(data, indent=2)

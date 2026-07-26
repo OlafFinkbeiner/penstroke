@@ -110,6 +110,18 @@
     background: #2253c4;
     color: white;
   }
+  /* Width-band mode: show the RAW per-point width (no taper) as a
+     translucent band with the bare centerline on top, and hide the
+     animated ribbon/guide. This is the width that becomes the Houdini
+     point attribute — useful to spot off-centre thinning / MIN_WIDTH. */
+  #svg-container.widthband svg .ribbon,
+  #svg-container.widthband svg .guide { display: none; }
+  #svg-container.widthband svg .wband  { opacity: 0.4; }
+  #svg-container.widthband svg .wbandcl { opacity: 1; }
+  button#widthband.active {
+    background: #2253c4;
+    color: white;
+  }
   .footnote {
     margin-top: 16px;
     font-size: 12px;
@@ -170,6 +182,7 @@
     <button id="playpause">⏸ Pause</button>
     <button id="restart" class="secondary">↻ Restart</button>
     <button id="wireframe" class="secondary">Wireframe</button>
+    <button id="widthband" class="secondary">Width band</button>
     <div class="slider-group">
       <label for="speed">Speed:</label>
       <input type="range" id="speed" min="0.1" max="5" step="0.1" value="1">
@@ -186,6 +199,7 @@
     <span class="selcount" id="selcount">0 selected</span>
     <input type="text" id="selcmd" readonly
            placeholder="Click glyph cells to select them for manual repair…">
+    <button id="selsave">Save selection</button>
     <button id="selcopy">Copy command</button>
     <button id="selclear">Clear</button>
   </div>
@@ -194,8 +208,14 @@
 
   <p class="footnote">
     Drag the time slider to scrub through the animation. Slow down to study stroke order, speed up to skim.
-    Click a glyph cell to mark it for manual repair; the command box builds the matching
-    <code>penstroke export-corel</code> call.
+    Click a glyph cell to mark it for manual repair. <b>Save selection</b> downloads a
+    <code>sel-&lt;font&gt;-&lt;hash&gt;.json</code> — drop it into the global selections inbox
+    (<code>penstroke/selections/</code>); it is routed to this font automatically and the
+    TOPs graph (or <code>penstroke sync-edits</code>) writes the matching CSV for CorelDRAW into
+    <code>penstroke/corel/</code> on the next cook. In Corel: import that CSV, edit, export back
+    into the same folder — same file or any name containing the font's name — and the next cook
+    merges it. The command box keeps the direct
+    <code>penstroke export-corel</code> call as a fallback.
   </p>
 
 <script>
@@ -290,6 +310,14 @@
     wireframeBtn.classList.toggle('active');
   });
 
+  // Width band: show the raw per-point width (the value that goes onto
+  // the Houdini points) instead of the styled/tapered ribbon.
+  const widthbandBtn = document.getElementById('widthband');
+  widthbandBtn.addEventListener('click', () => {
+    container.classList.toggle('widthband');
+    widthbandBtn.classList.toggle('active');
+  });
+
   // ---- Selection tool: mark glyphs for manual repair in CorelDRAW ----
   const selected = new Set();   // hex codepoints
   const selcount = document.getElementById('selcount');
@@ -325,6 +353,49 @@
       else { selected.add(h); cell.classList.add('sel'); }
       updateSelbar();
     });
+  });
+
+  // Save selection: download sel-<hash>.json for the selections/
+  // file handshake. The name is a content hash of the glyph string
+  // (deterministic — re-saving the same selection produces the same
+  // file), never a counter.
+  function selGlyphString() {
+    return [...selected]
+      .sort()
+      .map(h => String.fromCodePoint(parseInt(h, 16)))
+      .join('');
+  }
+
+  async function contentHash(s) {
+    const bytes = new TextEncoder().encode(s);
+    if (window.crypto && crypto.subtle) {
+      const buf = await crypto.subtle.digest('SHA-1', bytes);
+      return [...new Uint8Array(buf)]
+        .map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 6);
+    }
+    // FNV-1a fallback (crypto.subtle needs a secure context).
+    let h = 0x811c9dc5;
+    for (const b of bytes) { h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(16).padStart(8, '0').slice(0, 6);
+  }
+
+  document.getElementById('selsave').addEventListener('click', async () => {
+    if (selected.size === 0) return;
+    const glyphs = selGlyphString();
+    const font = document.querySelector('h1').textContent
+      .replace(/ Alphabet.*$/, '');
+    const body = JSON.stringify(
+      {penstroke_selection: 1, font: font, glyphs: glyphs}, null, 2);
+    // Font slug in the name keeps the GLOBAL selections inbox
+    // collision-free across fonts; the hash part stays content-derived.
+    const slug = font.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const name = 'sel-' + slug + '-' + await contentHash(glyphs) + '.json';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(
+      new Blob([body], {type: 'application/json'}));
+    a.download = name;
+    a.click();
+    URL.revokeObjectURL(a.href);
   });
 
   document.getElementById('selcopy').addEventListener('click', () => {

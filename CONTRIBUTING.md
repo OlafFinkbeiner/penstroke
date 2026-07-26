@@ -18,58 +18,55 @@ sudo apt install tesseract-ocr   # Linux
 ## Running tests
 
 ```bash
-python tests/test_smoke.py
+pytest                        # all suites (smoke + layout + fontscan)
+python tests/test_smoke.py    # smoke suite alone, script mode
 ```
 
 These run end-to-end against the Caveat TTF in `tests/fixtures/`.
-After any non-trivial change to `core/`, `templates/`, or
+After any non-trivial change to `core/`, `tracer.py`, or
 `pipeline.py`, also do a visual check:
 
 ```bash
 penstroke trace tests/fixtures/caveat.ttf /tmp/visual_check/
-open /tmp/visual_check/alphabet_static.svg
+open /tmp/visual_check/preview.html
 ```
 
-Compare to the expected look across the typical letters (A, B, R,
-X, a, g, e). Metrics improving while the visual gets worse is a
-known failure mode — a coverage score from 0.85 → 0.90 can come
-with subtle ribbon-shape regressions.
+Watch at slow speed — the real test is "does it look like a person
+writing?" — and read `diagnostics/*.png` for suspect letters. Metrics
+improving while the visual gets worse is a known failure mode — a
+coverage score from 0.85 → 0.90 can come with subtle ribbon-shape
+regressions. For tracer-geometry changes, also sweep the full charset
+before/after and compare stroke counts (see
+design/code_concept_review.md item 9 for a sweep that caught a real
+regression this way).
 
-## Adding letter-specific fixes
+## Fixing a tracing defect
 
-When a letter renders wrong across multiple fonts, the fix usually
-goes in `src/penstroke/templates/selection.py`. The `LETTER_STRATEGY`
-dict maps each character to an ordered list of Hershey font variants
-to try. Most uppercase letters and several lowercase ones are locked
-to `rowmans` because the topology-based scoring would otherwise pick
-a worse template (cursive's 1-stroke A, etc.).
+**Never add per-letter fixes — always generalize.** When a specific
+letter looks wrong, treat it as a specimen of a class: diagnose the
+mechanism, survey how many other letters share it, fix the mechanism.
+Where to look, by symptom:
 
-```python
-LETTER_STRATEGY = {
-    'a': ['cursive', 'rowmans'],
-    'A': ['rowmans'],
-    # ...
-}
-```
+- **Wrong stroke decomposition** (too many/few strokes, wrong split):
+  `tracer.py::analyze_junctions` (the pairing threshold
+  `MAX_CONTINUATION_TURN_DEG`) and `build_chains`.
+- **Strokes wander off the ink / strays**: the hygiene passes in
+  `tracer.py::build_annotated_graph` and
+  `core/graph.py::collapse_parallel_edges`.
+- **Wrong direction/order**: `_orient_walk_for_writing`,
+  `_orient_clockwise_if_closed`, `order_all_walks` in tracer.py.
+- **Missing dots/tittles**: `_split_mask_dots` in tracer.py.
+- **Skeleton itself wrong**: `core/skeleton.py` — but check the graph
+  hygiene passes first.
 
-If the chosen template is right but the trace shape is wrong, the
-issue is in `src/penstroke/templates/trace.py` — usually the
-Hershey-to-mask coordinate mapping or the waypoint snapping logic.
+## Non-Latin scripts
 
-## Adding a new script
-
-For scripts Hershey covers (Greek, Cyrillic, Gothic), follow the
-Greek pattern in `src/penstroke/templates/scripts.py`:
-
-1. Build a Unicode → ASCII-slot mapping dict.
-2. Add a routing branch in `choose_template()` in `selection.py`.
-
-For scripts Hershey doesn't cover (Hebrew, Arabic, Devanagari,
-CJK), the pipeline falls back to geometric decomposition in
-`core/strokes.py`. Quality is workable for simple letterforms,
-patchy for complex ones. To improve: hand-author per-letter
-templates in a new module like `templates/hebrew_templates.py`
-and add a routing branch.
+The tracer is script-agnostic by construction — pure geometry, no
+stroke-order database — but currently only validated on Latin. To add
+a script, no per-script code should be needed: trace a font of that
+script, judge the diagnostics, and fix whatever *mechanism* fails
+(most likely the writing-order conventions in `order_all_walks`,
+which encode Latin habits like top-to-bottom / left-to-right).
 
 ## Adding a new output format
 
@@ -107,14 +104,14 @@ import, Lottie for web animation, USD for film pipelines):
 
 ## Things to avoid
 
-- **Don't add per-letter hacks to `pipeline.py`.** Letter-specific
-  behavior belongs in `templates/selection.py` (template choice)
-  or `templates/trace.py` (tracing logic).
+- **Don't add per-letter hacks anywhere.** There is no per-letter
+  routing in this codebase by design; a letter-specific fix is a
+  class-of-letters fix that hasn't been diagnosed yet.
 
-- **Don't broaden the Hershey font search globally.** Adding a font
-  to `DEFAULT_ORDER` in `selection.py` affects all 50+ characters
-  and is hard to test exhaustively. Add it to `LETTER_STRATEGY` for
-  specific characters instead.
+- **Don't remove `rng=0` from `core/skeleton.py`.** Determinism is
+  load-bearing: without it the same glyph yields different skeletons
+  across runs and the symptom is intermittent stray strokes. There is
+  a regression test (`test_trace_determinism`) — keep it passing.
 
 - **Don't write to absolute paths.** All test fixtures and
   intermediate files should use paths relative to the repo root or

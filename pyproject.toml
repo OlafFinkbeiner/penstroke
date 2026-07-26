@@ -19,6 +19,7 @@ dependencies = [
     "Pillow>=9.4",
     "fonttools>=4.40",
     "networkx>=3.0",
+    "uharfbuzz>=0.37",  # text shaping for the layout engine (layout.py)
 ]
 
 [project.optional-dependencies]
@@ -30,6 +31,7 @@ ocr = [
 dev = [
     "pytest>=7.0",
     "cairosvg>=2.7",  # rendering SVG -> PNG for visual checks
+    "shapely>=2.0",   # penstroke.core.vector_skeleton (B0 vector medial axis, dev-only)
 ]
 
 [project.scripts]
