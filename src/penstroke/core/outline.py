@@ -137,7 +137,6 @@ def extract_outlines(font_path, char, size=512, pad=40, tol_px=0.5):
     upem = tt['head'].unitsPerEm
     hhea = tt['hhea']
     ascent_em = hhea.ascent
-    descent_em = -hhea.descent
     cmap = tt.getBestCmap()
     if ord(char) not in cmap:
         raise ValueError(f"glyph {char!r} not in font {font_path}")
@@ -145,9 +144,6 @@ def extract_outlines(font_path, char, size=512, pad=40, tol_px=0.5):
 
     px_per_em = size / upem
     ascent_px = int(round(ascent_em * px_per_em))
-    descent_px = int(round(descent_em * px_per_em))
-    advance_em, _ = tt['hmtx'][glyph_name]
-    advance_px = int(round(advance_em * px_per_em))
 
     baseline_y = pad + ascent_px
 

@@ -774,7 +774,6 @@ def _order_band(walks, start_xy, scale):
         # Held-Karp over (visited mask, last walk, last orientation).
         INF = float('inf')
         full = 1 << n
-        dp = [[[INF, None] for _ in range(2)] for _ in range(n)]
         best = {}
         for i in range(n):
             for o in (0, 1):

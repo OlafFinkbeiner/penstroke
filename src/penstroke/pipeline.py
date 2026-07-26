@@ -20,7 +20,6 @@ This is the single function the CLI, the future GUI, and the batch scripts
 all call. Everything else in the package is a building block for this.
 """
 
-import json
 import os
 import shutil
 import string
@@ -31,7 +30,6 @@ from penstroke.core.outline import extract_outlines
 from penstroke.render.glyph import make_glyph_svg
 from penstroke.render.alphabet import build_alphabet_svg, make_preview_html
 from penstroke.render.word import make_word_demo_html
-from penstroke.quality.metrics import has_strokes, coverage, stroke_count_matches_template
 from penstroke.quality.report import assess_letter, build_report, build_metadata_json
 from penstroke.quality.glyph_image import write_raw_glyphs
 

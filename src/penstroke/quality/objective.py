@@ -51,8 +51,6 @@ For cross-configuration comparisons use `reconstruction` (and
 `smoothness`), which depend only on the strokes and the glyph mask.
 """
 
-import math
-
 import numpy as np
 
 WEIGHTS = {

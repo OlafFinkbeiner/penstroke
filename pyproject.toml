@@ -31,7 +31,7 @@ ocr = [
 dev = [
     "pytest>=7.0",
     "cairosvg>=2.7",  # rendering SVG -> PNG for visual checks
-    "shapely>=2.0",   # scripts/proto_vector_medial_axis.py (B0 prototype) only
+    "shapely>=2.0",   # penstroke.core.vector_skeleton (B0 vector medial axis, dev-only)
 ]
 
 [project.scripts]

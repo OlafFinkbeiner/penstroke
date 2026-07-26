@@ -131,7 +131,7 @@ def build_alphabet_svg(items, cols=7, glyph_size=180, gap=20,
         f'.wband  {{ fill: {ink_color}; opacity: 0; }}',
         '.wbandcl { fill: none; stroke: #e11; stroke-width: 0.8; '
         'opacity: 0; stroke-linecap: round; stroke-linejoin: round; }',
-        f'.underlay {{ fill: #fde68a; fill-rule: evenodd; opacity: 0.7; }}',
+        '.underlay { fill: #fde68a; fill-rule: evenodd; opacity: 0.7; }',
         '.label { font-size: 11px; fill: #888; text-anchor: middle; }',
         '.cell-bg { fill: white; stroke: #eee; stroke-width: 1; rx: 6; }',
         '</style></defs>',

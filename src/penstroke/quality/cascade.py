@@ -24,7 +24,6 @@ often false positives worth ignoring.
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Optional
 import json
 import math
 import os

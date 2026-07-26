@@ -22,7 +22,6 @@ JSON schema:
 """
 
 import json
-import numpy as np
 from penstroke.render.svg import path_length
 from penstroke.core.smoothing import taper_profile
 

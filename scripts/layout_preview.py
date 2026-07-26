@@ -14,7 +14,7 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from penstroke.layout import layout, get_font
+from penstroke.layout import layout
 from penstroke.houdini.rep_outline import (extract_glyph_contours,
                                            _flatten_contour)
 

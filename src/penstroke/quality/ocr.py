@@ -25,7 +25,6 @@ was both wrong and non-reproducible.
 Requires `pytesseract` and the `tesseract` binary on PATH.
 """
 
-import io
 import string
 import numpy as np
 from PIL import Image, ImageDraw
